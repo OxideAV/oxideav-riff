@@ -105,9 +105,7 @@ All wire-format details are sourced from `docs/container/riff/`:
   Reference — cross-check that FourCC + size encoding matches
   across forms).
 
-No external library source (FFmpeg / libavformat / libsndfile /
-the Windows SDK `mmreg.h` header / DirectShow SDK) was consulted.
-The sibling `oxideav-avi` crate's own internal `riff.rs` was
-referenced as a clean-room precedent (same project, same
-provenance), but the new walker is a fresh write-up against the
-spec rather than a copy of the AVI-internal primitives.
+Clean-room implementation. The sibling `oxideav-avi` crate's own
+internal `riff.rs` was referenced as a clean-room precedent (same
+project, same provenance), but the new walker is a fresh write-up
+against the spec.
