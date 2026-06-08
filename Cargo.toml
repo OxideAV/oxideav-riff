@@ -1,0 +1,41 @@
+[package]
+name = "oxideav-riff"
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.80"
+license = "MIT"
+authors = ["Mark Karpeles <admin@echelle.co.jp>"]
+description = "Clean-room RIFF (Resource Interchange File Format) chunk-walker and WAV-metadata accessor — Microsoft RIFF MCI base spec + WAVEFORMATEX(TENSIBLE) + KSDATAFORMAT_SUBTYPE GUID resolver"
+repository = "https://github.com/OxideAV/oxideav-riff"
+homepage = "https://github.com/OxideAV/oxideav-riff"
+readme = "README.md"
+keywords = ["riff", "wav", "container", "parser", "multimedia"]
+categories = ["multimedia", "parser-implementations", "encoding"]
+
+[features]
+default = ["registry"]
+
+# `registry` wires up the `oxideav-core` Error alias so the crate plugs
+# into the broader oxideav framework. Drop it (`default-features = false`)
+# for a free-standing build that exposes a crate-local Error type and a
+# pure parsing API without the framework dependency tree.
+registry = ["dep:oxideav-core"]
+
+[dependencies]
+# Optional under the `registry` feature so consumers can use the chunk
+# walker without pulling the framework dependency tree.
+oxideav-core = { version = "0.1", optional = true }
+
+[lints.rust]
+unsafe_code = "deny"
+missing_debug_implementations = "warn"
+
+[lints.clippy]
+# Clippy 1.95 promoted two lints that disagree with each other on
+# multi-line markdown list items in `//!` doc-comments — fixing one
+# triggers the other (the suggestion's indentation lands outside the
+# accepted range of the sibling lint). Per the workspace's clippy 1.95
+# notes we allow both rather than reformat every list-bearing doc
+# comment in the crate.
+doc_lazy_continuation = "allow"
+doc_overindented_list_items = "allow"
