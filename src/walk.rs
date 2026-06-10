@@ -269,9 +269,8 @@ impl<'r, R: Read + Seek + ?Sized> Walker<'r, R> {
     ///
     /// Fails if `chunk` is not a group chunk. On success the walker
     /// has consumed 4 bytes of the child's payload; the caller can
-    /// then pass the child's [`ChunkHeader`] equivalent to a nested
-    /// walker for the remaining `chunk.size - 4` bytes — or use the
-    /// [`Walker::descend`] convenience instead.
+    /// then construct a nested walker over the remaining
+    /// `chunk.size - 4` bytes of the child's body.
     pub fn read_inner_form_type(&mut self, chunk: &ChunkRef) -> Result<[u8; 4]> {
         if !chunk.is_group() {
             return Err(Error::invalid(

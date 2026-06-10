@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 267 — `fmt ` chunk decoder.** First typed chunk-body
+  primitive: `waveformat::WaveFormat::parse(body)` decodes a WAV
+  `fmt ` chunk body (the bytes the walker yields) into a typed
+  descriptor, per the 1991 RIFF MCI §2 base layout + the Microsoft
+  Learn `WAVEFORMATEXTENSIBLE` references.
+
+  - Base `WAVEFORMAT` prefix — `format_tag`, `channels`,
+    `sample_rate`, `avg_bytes_per_sec`, `block_align`,
+    `bits_per_sample` (all little-endian).
+  - `WAVEFORMATEX` extension — the optional `cbSize` at +16 and its
+    counted trailing bytes, exposed raw as `extension`; a `cbSize`
+    that over-runs the body length is rejected.
+  - `WAVEFORMATEXTENSIBLE` tail (`ExtensibleFields`) — parsed when
+    `format_tag == WAVE_FORMAT_EXTENSIBLE (0xFFFE)`: the `Samples`
+    union (`samples`), `dwChannelMask` (`channel_mask`), and the
+    16-byte `SubFormat` GUID. A `0xFFFE` tag with fewer than 22
+    extension bytes is rejected.
+  - `Guid` — Microsoft mixed-endian GUID (`from_le_wire`,
+    `to_hyphenated`) with `is_waveformatex_derived` /
+    `waveformatex_tag` recovering the legacy 16-bit `wFormatTag`
+    from a `DEFINE_WAVEFORMATEX_GUID`-template subtype, plus the
+    `KSDATAFORMAT_SUBTYPE_WAVEFORMATEX_BASE` template constant.
+  - `WaveFormat::is_extensible` / `effective_format_tag` /
+    `channel_mask_count` convenience accessors.
+  - `WAVE_FORMAT_PCM` / `_ADPCM` / `_IEEE_FLOAT` / `_ALAW` /
+    `_MULAW` / `_EXTENSIBLE` `wFormatTag` constants.
+  - 12 new unit tests covering the bare-`WAVEFORMAT`,
+    `WAVEFORMATEX`-with-extension, extensible-PCM, non-template
+    `SubFormat`, mixed-endian GUID decode, and the short-body /
+    `cbSize`-overrun / truncated-extensible rejection paths.
+
 - **Round 257 — bootstrap.** Initial release of the `oxideav-riff`
   crate: a shared, clean-room **RIFF chunk-walker** that every
   RIFF-family parser (WAV, AVI, WebP, AMV, ANI, …) can plug into.
@@ -81,8 +112,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `RF64` / `BW64` 64-bit-extended outer wrapper + `ds64`
   side-table (EBU Tech 3306 §4).
-- `fmt ` chunk body decoder + `WAVEFORMATEX` + `WAVEFORMATEXTENSIBLE`
-  + `KSDATAFORMAT_SUBTYPE_*` GUID resolver.
+- Full named `KSDATAFORMAT_SUBTYPE_*` GUID catalogue (the
+  symbolic-name ↔ codec table beyond the `DEFINE_WAVEFORMATEX_GUID`
+  template `WaveFormat` already resolves).
 - WAV metadata-bearing chunks: `LIST INFO` sub-IDs (RIFF MCI §3 +
   RecordingBlogs + ExifTool catalog), BWF `bext` (EBU Tech 3285),
   `iXML`, `cue ` / `plst` / `LIST adtl`, `smpl` / `inst`, ADM
@@ -104,6 +136,11 @@ All wire-format details are sourced from `docs/container/riff/`:
 - `avi-riff-file-reference.md` (DirectShow AVI RIFF File
   Reference — cross-check that FourCC + size encoding matches
   across forms).
+- `rfc2361-wav.txt` (the `wFormatTag` registry values).
+- `waveformatextensible/` — Microsoft Learn *WAVEFORMATEXTENSIBLE
+  structure*, *Extensible Wave-Format Descriptors*, and
+  *Converting Between Format Tags and Subformat GUIDs* (the
+  `DEFINE_WAVEFORMATEX_GUID` base-template macro).
 
 Clean-room implementation. The sibling `oxideav-avi` crate's own
 internal `riff.rs` was referenced as a clean-room precedent (same

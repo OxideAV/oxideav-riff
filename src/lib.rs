@@ -16,9 +16,11 @@
 //! …) are intentionally **not** parsed here — they live in their own
 //! codec crates which call into the walker.
 //!
-//! Round 257 lands the chunk-walker as the foundation; later rounds
-//! will stack the WAV `fmt`-chunk decoder + `WAVEFORMATEX(TENSIBLE)`
-//! parser + `KSDATAFORMAT_SUBTYPE_*` GUID resolver on top.
+//! Round 257 lands the chunk-walker as the foundation; round 267
+//! stacks the WAV `fmt`-chunk decoder ([`waveformat::WaveFormat`])
+//! with its `WAVEFORMATEX` + `WAVEFORMATEXTENSIBLE` sub-fields and the
+//! `DEFINE_WAVEFORMATEX_GUID` sub-format resolver on top. The full
+//! `KSDATAFORMAT_SUBTYPE_*` named-GUID catalogue is a later round.
 //!
 //! ## Wire format (§1.3 of the 1991 spec)
 //!
@@ -102,6 +104,7 @@ pub mod chunk;
 pub mod error;
 pub mod fourcc;
 pub mod walk;
+pub mod waveformat;
 
 pub use chunk::{
     read_chunk_header, read_form_type, skip_chunk, skip_pad, ChunkHeader, FOURCC_LIST, FOURCC_RIFF,
@@ -109,3 +112,8 @@ pub use chunk::{
 pub use error::{Error, Result};
 pub use fourcc::{fourcc_bytes, fourcc_to_string, is_printable_fourcc};
 pub use walk::{ChunkRef, Walker};
+pub use waveformat::{
+    ExtensibleFields, Guid, WaveFormat, KSDATAFORMAT_SUBTYPE_WAVEFORMATEX_BASE, WAVE_FORMAT_ADPCM,
+    WAVE_FORMAT_ALAW, WAVE_FORMAT_EXTENSIBLE, WAVE_FORMAT_IEEE_FLOAT, WAVE_FORMAT_MULAW,
+    WAVE_FORMAT_PCM,
+};

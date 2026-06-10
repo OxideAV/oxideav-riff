@@ -6,7 +6,7 @@ File Format) chunk-walking primitives, per the publicly-published
 and Microsoft released in August 1991 and re-affirmed in the modern
 Microsoft Learn *Resource Interchange File Format (RIFF)* page.
 
-## Status — round 257 bootstrap
+## Status — round 267
 
 This crate ships the **shared chunk-walking primitives** that every
 RIFF-family parser needs: a `ChunkHeader` decoder, a non-recursive
@@ -16,12 +16,18 @@ feature that re-exports `oxideav-core`'s framework error type so the
 walker plugs into the broader OxideAV pipeline without conversion
 boilerplate).
 
-The single goal for the bootstrap round is the chunk walker — codec-
-specific chunk bodies (`fmt ` / `data` / `LIST INFO` sub-IDs / `bext`
-BWF / `iXML` / `cue ` / `plst` / `LIST adtl` / `smpl` / `inst` /
-`axml` / `chna` / `ds64` RF64 / `id3 `) and the `WAVEFORMATEX`
-+ `WAVEFORMATEXTENSIBLE` + `KSDATAFORMAT_SUBTYPE_*` GUID resolver are
-deferred to subsequent rounds and will stack on top of the walker.
+Round 267 adds the first typed chunk-body decoder: the WAV `fmt `
+descriptor via [`WaveFormat`], covering the `WAVEFORMAT` (16-byte) /
+`WAVEFORMATEX` (18-byte + `cbSize` extension) / `WAVEFORMATEXTENSIBLE`
+(40-byte) forms, the `Samples` union + `dwChannelMask` +
+`SubFormat` GUID sub-fields, and the `DEFINE_WAVEFORMATEX_GUID`
+sub-format → legacy-`wFormatTag` resolver.
+
+Remaining codec-specific chunk bodies (`data` / `LIST INFO` sub-IDs /
+`bext` BWF / `iXML` / `cue ` / `plst` / `LIST adtl` / `smpl` /
+`inst` / `axml` / `chna` / `ds64` RF64 / `id3 `) and the full named
+`KSDATAFORMAT_SUBTYPE_*` GUID catalogue are deferred to subsequent
+rounds and stack on top of the walker.
 
 ## What the walker covers (round 257)
 
@@ -56,10 +62,38 @@ What the walker explicitly does **not** cover yet:
   §4) — the `ds64` side-table needs reading before the outer
   `ckSize` field becomes trustworthy. A separate `walk_rf64`
   constructor will land in a later round.
-- The `fmt ` chunk body, `WAVEFORMATEX`, `WAVEFORMATEXTENSIBLE`,
-  and the `KSDATAFORMAT_SUBTYPE_*` GUID resolver.
-- Any specific chunk body — the walker is intentionally codec-
-  agnostic.
+- Any other specific chunk body — the walker stays codec-agnostic;
+  only the `fmt ` body has a typed decoder so far (see below).
+
+## The `fmt ` chunk decoder (round 267)
+
+[`WaveFormat::parse`] takes a `fmt ` chunk body (pulled from the
+walker via `Walker::read_body`) and returns a typed descriptor:
+
+- **Base `WAVEFORMAT` prefix** — `format_tag` / `channels` /
+  `sample_rate` / `avg_bytes_per_sec` / `block_align` /
+  `bits_per_sample`, all little-endian per the 1991 spec §2.
+- **`WAVEFORMATEX` extension** — the optional 2-byte `cbSize` at
+  +16 and its `cbSize`-counted trailing bytes, exposed raw as
+  `extension` (over-running `cbSize` is rejected, not truncated).
+- **`WAVEFORMATEXTENSIBLE` tail** — when `format_tag == 0xFFFE`,
+  the `Samples` union (`wValidBitsPerSample` / `wSamplesPerBlock`),
+  the `dwChannelMask` speaker bitmap, and the 16-byte `SubFormat`
+  GUID are parsed into `ExtensibleFields`. A `0xFFFE` tag with
+  fewer than 22 extension bytes is rejected.
+- **`SubFormat` resolver** — `Guid::from_le_wire` decodes the
+  Microsoft mixed-endian GUID (LE `Data1`/`Data2`/`Data3`, BE
+  `Data4`); `Guid::waveformatex_tag` recovers the legacy 16-bit
+  `wFormatTag` from a `DEFINE_WAVEFORMATEX_GUID`-template subtype
+  (so an extensible PCM descriptor resolves back to `0x0001`), and
+  returns `None` for non-template GUIDs (Dolby AC-3, DTS, …).
+  `WaveFormat::effective_format_tag` folds that together.
+- **`wFormatTag` constants** — `WAVE_FORMAT_PCM` / `_ADPCM` /
+  `_IEEE_FLOAT` / `_ALAW` / `_MULAW` / `_EXTENSIBLE`.
+
+The full named `KSDATAFORMAT_SUBTYPE_*` GUID catalogue (the
+symbolic-name ↔ codec table beyond the `DEFINE_WAVEFORMATEX_GUID`
+template) is deferred to a later round.
 
 ## Standalone build
 
@@ -104,9 +138,17 @@ while let Some(chunk) = walker.read_next().unwrap() {
 - `docs/container/riff/avi-riff-file-reference.md` — DirectShow
   AVI RIFF File Reference; useful cross-check that the FourCC +
   size encoding matches across forms.
-- `docs/container/riff/waveformatextensible/README.md` and the
-  consolidated `ksdataformat-subtype-guids.md` catalogue — staged
-  for the next round's `fmt ` / `WAVEFORMATEXTENSIBLE` decoder.
+- `docs/container/riff/rfc2361-wav.txt` — RFC 2361, the
+  `wFormatTag` codec-format-ID registry consumed by the round-267
+  `fmt ` decoder.
+- `docs/container/riff/waveformatextensible/` — Microsoft Learn
+  *WAVEFORMATEXTENSIBLE structure*, *Extensible Wave-Format
+  Descriptors*, and *Converting Between Format Tags and Subformat
+  GUIDs* — the source for the round-267 `WAVEFORMATEX(TENSIBLE)`
+  field layout + `DEFINE_WAVEFORMATEX_GUID` sub-format resolver.
+  The consolidated `ksdataformat-subtype-guids.md` named-GUID
+  catalogue stays staged for the full subtype table in a later
+  round.
 - `docs/container/riff/metadata/README.md` — staged catalogue of
   the WAV metadata-bearing chunks (`LIST INFO`, `bext`, `iXML`,
   `cue ` / `plst` / `LIST adtl`, `smpl` / `inst`, `axml` /
