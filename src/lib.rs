@@ -103,6 +103,7 @@
 pub mod chunk;
 pub mod error;
 pub mod fourcc;
+pub mod info;
 pub mod walk;
 pub mod waveformat;
 
@@ -111,6 +112,7 @@ pub use chunk::{
 };
 pub use error::{Error, Result};
 pub use fourcc::{fourcc_bytes, fourcc_to_string, is_printable_fourcc};
+pub use info::{zstr_bytes, zstr_value, InfoList, InfoTag};
 pub use walk::{ChunkRef, Walker};
 pub use waveformat::{
     ExtensibleFields, Guid, WaveFormat, KSDATAFORMAT_SUBTYPE_WAVEFORMATEX_BASE, WAVE_FORMAT_ADPCM,

@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 275 — `LIST INFO` metadata decoder.** A typed reader for
+  the registered `INFO` identification-metadata namespace, per the
+  1991 RIFF MCI §2 "INFO List Chunk" + "NULL-Terminated String
+  (ZSTR) Format".
+
+  - `info::InfoTag` — the 23 baseline `INFO` sub-IDs the spec
+    registers, exposed as associated constants (`INAM`, `IART`,
+    `ICOP`, …) with `InfoTag::label()` mapping each to its spec field
+    name, `InfoTag::is_baseline()`, and the `InfoTag::BASELINE`
+    ordered table. Unknown / vendor four-character codes are
+    preserved verbatim (the spec instructs applications to ignore,
+    not reject, unrecognised IDs).
+  - `info::zstr_bytes` / `info::zstr_value` — ZSTR body decode: bytes
+    up to the first `0x00`, with tolerance for bodies that rely only
+    on the RIFF pad byte (no embedded terminator). `zstr_value`
+    lossily decodes to `String`.
+  - `info::InfoList` — an ordered `(InfoTag, String)` collection.
+    `collect_from(&mut Walker)` walks a `LIST INFO` sub-tree (built
+    after reading the `INFO` list-type with
+    `Walker::read_inner_form_type`) into the list; `get(tag)` returns
+    the first value, `entries()` exposes all (order + duplicates
+    preserved). A non-`INFO` list-type is rejected.
+  - 12 new unit tests covering the baseline table, label mapping,
+    ZSTR edge cases (missing terminator, embedded NUL, invalid
+    UTF-8), order/duplicate preservation, odd-length-body pad
+    re-sync, unknown-tag retention, and the non-INFO rejection.
+  - Re-exported at the crate root: `InfoList`, `InfoTag`,
+    `zstr_bytes`, `zstr_value`.
+
 - **Round 267 — `fmt ` chunk decoder.** First typed chunk-body
   primitive: `waveformat::WaveFormat::parse(body)` decodes a WAV
   `fmt ` chunk body (the bytes the walker yields) into a typed

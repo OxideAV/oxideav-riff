@@ -6,7 +6,7 @@ File Format) chunk-walking primitives, per the publicly-published
 and Microsoft released in August 1991 and re-affirmed in the modern
 Microsoft Learn *Resource Interchange File Format (RIFF)* page.
 
-## Status — round 267
+## Status — round 275
 
 This crate ships the **shared chunk-walking primitives** that every
 RIFF-family parser needs: a `ChunkHeader` decoder, a non-recursive
@@ -16,18 +16,30 @@ feature that re-exports `oxideav-core`'s framework error type so the
 walker plugs into the broader OxideAV pipeline without conversion
 boilerplate).
 
-Round 267 adds the first typed chunk-body decoder: the WAV `fmt `
+Round 267 added the first typed chunk-body decoder: the WAV `fmt `
 descriptor via [`WaveFormat`], covering the `WAVEFORMAT` (16-byte) /
 `WAVEFORMATEX` (18-byte + `cbSize` extension) / `WAVEFORMATEXTENSIBLE`
 (40-byte) forms, the `Samples` union + `dwChannelMask` +
 `SubFormat` GUID sub-fields, and the `DEFINE_WAVEFORMATEX_GUID`
 sub-format → legacy-`wFormatTag` resolver.
 
-Remaining codec-specific chunk bodies (`data` / `LIST INFO` sub-IDs /
-`bext` BWF / `iXML` / `cue ` / `plst` / `LIST adtl` / `smpl` /
-`inst` / `axml` / `chna` / `ds64` RF64 / `id3 `) and the full named
-`KSDATAFORMAT_SUBTYPE_*` GUID catalogue are deferred to subsequent
-rounds and stack on top of the walker.
+Round 275 adds the **`LIST INFO` metadata decoder** ([`InfoList`] /
+[`InfoTag`]): the 23 baseline `INFO` sub-IDs the 1991 RIFF MCI spec
+registers (`IARL` / `IART` / `ICMS` / `ICMT` / `ICOP` / `ICRD` /
+`ICRP` / `IDIM` / `IDPI` / `IENG` / `IGNR` / `IKEY` / `ILGT` / `IMED`
+/ `INAM` / `IPLT` / `IPRD` / `ISBJ` / `ISFT` / `ISHP` / `ISRC` /
+`ISRF` / `ITCH`), each carrying its spec field name via
+`InfoTag::label`, plus a ZSTR body decoder (`zstr_bytes` /
+`zstr_value`) and `InfoList::collect_from` which walks a `LIST INFO`
+sub-tree into an ordered `(tag, value)` list (duplicates and unknown
+vendor codes preserved, per the spec's "ignore but don't reject"
+rule).
+
+Remaining codec-specific chunk bodies (`data` / `bext` BWF / `iXML` /
+`cue ` / `plst` / `LIST adtl` / `smpl` / `inst` / `axml` / `chna` /
+`ds64` RF64 / `id3 `) and the full named `KSDATAFORMAT_SUBTYPE_*` GUID
+catalogue are deferred to subsequent rounds and stack on top of the
+walker.
 
 ## What the walker covers (round 257)
 
@@ -95,6 +107,36 @@ The full named `KSDATAFORMAT_SUBTYPE_*` GUID catalogue (the
 symbolic-name ↔ codec table beyond the `DEFINE_WAVEFORMATEX_GUID`
 template) is deferred to a later round.
 
+## The `LIST INFO` metadata decoder (round 275)
+
+A `RIFF`/`WAVE` (or AVI / WebP) file may carry a `LIST` chunk whose
+list-type FourCC is `INFO` — the registered global identification-
+metadata namespace from the 1991 RIFF MCI spec §2. Each child chunk's
+body is a **ZSTR** (NULL-terminated ASCII text).
+
+- **[`InfoTag`]** — the 23 baseline four-character codes the spec
+  registers, exposed as associated constants (`InfoTag::INAM`, …) with
+  the spec's field name reachable via `InfoTag::label()`
+  (`"Name"`, `"Copyright"`, …) and `InfoTag::is_baseline()` to test
+  membership. `InfoTag::BASELINE` is the full ordered table. Unknown /
+  vendor codes (`IMP3`, `ITRK`, …) round-trip verbatim — the spec
+  says to ignore, not reject, unrecognised IDs.
+- **ZSTR body decode** — `zstr_bytes()` returns the bytes up to the
+  first `0x00`; `zstr_value()` lossily decodes them to a `String`.
+  A body that relies only on the RIFF pad byte (no embedded `NUL`)
+  yields the whole body.
+- **[`InfoList`]** — an ordered `(InfoTag, String)` collection.
+  `collect_from(&mut Walker)` drives a sub-walker already positioned
+  over a `LIST INFO` body (built after the caller reads the `INFO`
+  list-type with `Walker::read_inner_form_type`) and gathers every tag
+  in on-wire order; `get(tag)` returns the first value, `entries()`
+  exposes all (duplicates preserved).
+
+The common vendor / iTunes-era extensions (`ITRK`, `ILNG`, `IMP3`,
+`IDIT`, …) catalogued by ExifTool and the `LIST adtl` associated-data
+sub-chunks (`labl` / `note` / `ltxt` / `file`) stay deferred to a
+later round; they stack on `InfoList` and the walker.
+
 ## Standalone build
 
 `oxideav-core` is gated behind the default-on `registry` feature.
@@ -149,6 +191,10 @@ while let Some(chunk) = walker.read_next().unwrap() {
   The consolidated `ksdataformat-subtype-guids.md` named-GUID
   catalogue stays staged for the full subtype table in a later
   round.
+- `docs/container/riff/metadata/microsoft-riffmci.pdf` §2 —
+  "INFO List Chunk" (the registered global `INFO` form-type + the
+  23-entry baseline tag table) and "NULL-Terminated String (ZSTR)
+  Format" — the source for the round-275 `LIST INFO` decoder.
 - `docs/container/riff/metadata/README.md` — staged catalogue of
   the WAV metadata-bearing chunks (`LIST INFO`, `bext`, `iXML`,
   `cue ` / `plst` / `LIST adtl`, `smpl` / `inst`, `axml` /
