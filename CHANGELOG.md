@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 289 — BWF `bext` broadcast-extension decoder.** A typed
+  reader for the Broadcast Audio Extension chunk, per EBU Tech 3285 v2
+  (`broadcast_audio_extension` struct + per-field descriptions + §1.1
+  "Version compatibility").
+
+  - `bext::BroadcastExtension::parse(body)` decodes the 602-byte fixed
+    prefix — `Description` / `Originator` / `OriginatorReference`
+    (NUL-padded ASCII), `OriginationDate` (`"yyyy-mm-dd"`) /
+    `OriginationTime` (`"hh-mm-ss"`), the 64-bit `TimeReference`
+    reassembled from its low/high words, the `Version` word, the 64-byte
+    SMPTE 330M `UMID`, and the five 16-bit-signed loudness fields — plus
+    the trailing variable-length `CodingHistory` (chunk size − 602). A
+    body shorter than the 602-byte prefix is rejected as truncated.
+  - Version gating per §1.1: `umid()` returns the UMID only when
+    `version >= 1`; `loudness()` returns the `bext::Loudness`
+    measurements only when `version >= 2` (the bytes are reserved in
+    earlier versions). Raw bytes (`umid_bytes`, the `*_x100` fields)
+    stay reachable unconditionally.
+  - `bext::Loudness` — `value` / `range` / `max_true_peak` /
+    `max_momentary` / `max_short_term`, each a `round(100 × …)` integer,
+    with `_x100` raw accessors and `_lufs` / `_lu` / `_dbtp`
+    natural-unit accessors.
+  - String accessors (`description()`, `originator()`, …) trim at the
+    first NUL and lossily decode to `String`; `coding_history()`
+    additionally strips trailing NUL padding.
+  - 10 new unit tests covering the prefix-length invariant, short-body
+    rejection, NUL-trimmed string fields, 64-bit TimeReference
+    reassembly, UMID + loudness version gating with scaling, the
+    CodingHistory trailing field + its NUL-padding trim, and lossy
+    non-ASCII decode.
+  - Re-exported at the crate root: `BroadcastExtension`, `Loudness`,
+    `BEXT_PREFIX_LEN`, and the field-length constants.
+
 - **Round 275 — `LIST INFO` metadata decoder.** A typed reader for
   the registered `INFO` identification-metadata namespace, per the
   1991 RIFF MCI §2 "INFO List Chunk" + "NULL-Terminated String
@@ -144,10 +177,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Full named `KSDATAFORMAT_SUBTYPE_*` GUID catalogue (the
   symbolic-name ↔ codec table beyond the `DEFINE_WAVEFORMATEX_GUID`
   template `WaveFormat` already resolves).
-- WAV metadata-bearing chunks: `LIST INFO` sub-IDs (RIFF MCI §3 +
-  RecordingBlogs + ExifTool catalog), BWF `bext` (EBU Tech 3285),
-  `iXML`, `cue ` / `plst` / `LIST adtl`, `smpl` / `inst`, ADM
-  `axml` / `chna`, `id3 ` chunk.
+- WAV metadata-bearing chunks: the `LIST INFO` vendor / iTunes-era
+  sub-IDs beyond the 23-entry baseline (RecordingBlogs + ExifTool
+  catalog), BWF `iXML` / `qlty` / `mext`, `cue ` / `plst` /
+  `LIST adtl`, `smpl` / `inst`, ADM `axml` / `chna`, `id3 ` chunk.
 - Higher-level recursive walker (`walk_tree`) for callers that
   want one-shot enumeration of every nested chunk.
 - Streaming writer (begin/finish reservation pattern) — currently

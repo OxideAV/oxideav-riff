@@ -19,8 +19,11 @@
 //! Round 257 lands the chunk-walker as the foundation; round 267
 //! stacks the WAV `fmt`-chunk decoder ([`waveformat::WaveFormat`])
 //! with its `WAVEFORMATEX` + `WAVEFORMATEXTENSIBLE` sub-fields and the
-//! `DEFINE_WAVEFORMATEX_GUID` sub-format resolver on top. The full
-//! `KSDATAFORMAT_SUBTYPE_*` named-GUID catalogue is a later round.
+//! `DEFINE_WAVEFORMATEX_GUID` sub-format resolver on top; round 275 adds
+//! the `LIST INFO` metadata decoder ([`info::InfoList`]); round 289 adds
+//! the BWF `bext` broadcast-extension decoder
+//! ([`bext::BroadcastExtension`]). The full `KSDATAFORMAT_SUBTYPE_*`
+//! named-GUID catalogue is a later round.
 //!
 //! ## Wire format (§1.3 of the 1991 spec)
 //!
@@ -100,6 +103,7 @@
 
 #![doc(html_root_url = "https://docs.rs/oxideav-riff/0.0.1")]
 
+pub mod bext;
 pub mod chunk;
 pub mod error;
 pub mod fourcc;
@@ -107,6 +111,10 @@ pub mod info;
 pub mod walk;
 pub mod waveformat;
 
+pub use bext::{
+    BroadcastExtension, Loudness, BEXT_PREFIX_LEN, DESCRIPTION_LEN, ORIGINATION_DATE_LEN,
+    ORIGINATION_TIME_LEN, ORIGINATOR_LEN, ORIGINATOR_REFERENCE_LEN, RESERVED_LEN, UMID_LEN,
+};
 pub use chunk::{
     read_chunk_header, read_form_type, skip_chunk, skip_pad, ChunkHeader, FOURCC_LIST, FOURCC_RIFF,
 };

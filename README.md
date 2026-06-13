@@ -6,7 +6,7 @@ File Format) chunk-walking primitives, per the publicly-published
 and Microsoft released in August 1991 and re-affirmed in the modern
 Microsoft Learn *Resource Interchange File Format (RIFF)* page.
 
-## Status — round 275
+## Status — round 289
 
 This crate ships the **shared chunk-walking primitives** that every
 RIFF-family parser needs: a `ChunkHeader` decoder, a non-recursive
@@ -35,11 +35,18 @@ sub-tree into an ordered `(tag, value)` list (duplicates and unknown
 vendor codes preserved, per the spec's "ignore but don't reject"
 rule).
 
-Remaining codec-specific chunk bodies (`data` / `bext` BWF / `iXML` /
-`cue ` / `plst` / `LIST adtl` / `smpl` / `inst` / `axml` / `chna` /
-`ds64` RF64 / `id3 `) and the full named `KSDATAFORMAT_SUBTYPE_*` GUID
-catalogue are deferred to subsequent rounds and stack on top of the
-walker.
+Round 289 adds the **BWF `bext` broadcast-extension decoder**
+([`BroadcastExtension`]): the 602-byte fixed prefix (Description /
+Originator / OriginatorReference / OriginationDate / OriginationTime /
+the 64-bit TimeReference / Version / 64-byte SMPTE 330M UMID / the five
+loudness measurements) plus the trailing variable-length CodingHistory,
+per EBU Tech 3285 v2 — with the spec's §1.1 version gating (UMID exposed
+only for Version >= 1, [`Loudness`] only for Version >= 2).
+
+Remaining codec-specific chunk bodies (`data` / `iXML` / `cue ` /
+`plst` / `LIST adtl` / `smpl` / `inst` / `axml` / `chna` / `ds64` RF64 /
+`id3 `) and the full named `KSDATAFORMAT_SUBTYPE_*` GUID catalogue are
+deferred to subsequent rounds and stack on top of the walker.
 
 ## What the walker covers (round 257)
 
@@ -137,6 +144,37 @@ The common vendor / iTunes-era extensions (`ITRK`, `ILNG`, `IMP3`,
 sub-chunks (`labl` / `note` / `ltxt` / `file`) stay deferred to a
 later round; they stack on `InfoList` and the walker.
 
+## The `bext` Broadcast Audio Extension decoder (round 289)
+
+A *Broadcast Wave Format* (BWF) file is a RIFF/WAVE file with one extra
+chunk, FourCC `bext`, carrying production metadata. [`BroadcastExtension::parse`]
+takes a `bext` chunk body (pulled from the walker via
+`Walker::read_body`) and returns a typed descriptor, per EBU Tech 3285 v2:
+
+- **602-byte fixed prefix** — `Description[256]` / `Originator[32]` /
+  `OriginatorReference[32]` (NUL-padded ASCII, exposed both as the raw
+  byte arrays and as trimmed-at-NUL `String` accessors),
+  `OriginationDate[10]` (`"yyyy-mm-dd"`) / `OriginationTime[8]`
+  (`"hh-mm-ss"`), the 64-bit `TimeReference` reassembled from its
+  low/high words, the `Version` word, the 64-byte `UMID`, and the five
+  16-bit-signed loudness fields.
+- **Version gating (§1.1)** — `umid()` returns the UMID only when
+  `version >= 1`; `loudness()` returns the [`Loudness`] measurements
+  only when `version >= 2`, mirroring the spec's forwards/backwards-
+  compatibility rule (older readers ignore the bytes newer versions
+  reuse). The unconditional raw bytes stay reachable on the public
+  fields.
+- **`Loudness`** — `value`/`range`/`max_true_peak`/`max_momentary`/
+  `max_short_term`, each a `round(100 × …)` integer, with `_x100` raw
+  accessors and `_lufs` / `_lu` / `_dbtp` natural-unit accessors.
+- **`CodingHistory`** — the trailing variable-length field (chunk size
+  − 602), the collection of CR/LF-separated coding-process descriptions,
+  decoded with trailing NUL padding stripped.
+
+The `iXML` companion metadata block, the `qlty` / `mext` BWF
+supplements, and the `axml` / `chna` ADM chunks stay deferred to later
+rounds.
+
 ## Standalone build
 
 `oxideav-core` is gated behind the default-on `registry` feature.
@@ -195,6 +233,11 @@ while let Some(chunk) = walker.read_next().unwrap() {
   "INFO List Chunk" (the registered global `INFO` form-type + the
   23-entry baseline tag table) and "NULL-Terminated String (ZSTR)
   Format" — the source for the round-275 `LIST INFO` decoder.
+- `docs/container/riff/metadata/ebu-tech3285-bwf.pdf` — EBU Tech 3285
+  v2, *Specification of the Broadcast Wave Format (BWF)*: the
+  `broadcast_audio_extension` struct, the per-field descriptions, and
+  §1.1 "Version compatibility" — the source for the round-289 `bext`
+  decoder.
 - `docs/container/riff/metadata/README.md` — staged catalogue of
   the WAV metadata-bearing chunks (`LIST INFO`, `bext`, `iXML`,
   `cue ` / `plst` / `LIST adtl`, `smpl` / `inst`, `axml` /
