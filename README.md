@@ -6,7 +6,7 @@ File Format) chunk-walking primitives, per the publicly-published
 and Microsoft released in August 1991 and re-affirmed in the modern
 Microsoft Learn *Resource Interchange File Format (RIFF)* page.
 
-## Status — round 289
+## Status — round 295
 
 This crate ships the **shared chunk-walking primitives** that every
 RIFF-family parser needs: a `ChunkHeader` decoder, a non-recursive
@@ -43,10 +43,18 @@ loudness measurements) plus the trailing variable-length CodingHistory,
 per EBU Tech 3285 v2 — with the spec's §1.1 version gating (UMID exposed
 only for Version >= 1, [`Loudness`] only for Version >= 2).
 
+Round 295 adds the **named `KSDATAFORMAT_SUBTYPE_*` GUID catalogue**
+([`KsSubtype`]): a classifier that takes a decoded `SubFormat`
+[`Guid`] and identifies its family — the `WAVEFORMATEX`-derived subtypes
+(`…_PCM` / `…_IEEE_FLOAT` / `…_ALAW` / `…_DOLBY_AC3_SPDIF` / …) and the
+Windows-7+ IEC 61937 compressed-passthrough subtypes (`…_IEC61937_MPEG1`
+/ `…_IEC61937_DOLBY_DIGITAL_PLUS` / `…_IEC61937_DTS_HD` / …),
+discriminated by the `0x0cea` `Data2` marker — returning the symbolic
+name and a codec description.
+
 Remaining codec-specific chunk bodies (`data` / `iXML` / `cue ` /
 `plst` / `LIST adtl` / `smpl` / `inst` / `axml` / `chna` / `ds64` RF64 /
-`id3 `) and the full named `KSDATAFORMAT_SUBTYPE_*` GUID catalogue are
-deferred to subsequent rounds and stack on top of the walker.
+`id3 `) are deferred to subsequent rounds and stack on top of the walker.
 
 ## What the walker covers (round 257)
 
@@ -112,7 +120,37 @@ walker via `Walker::read_body`) and returns a typed descriptor:
 
 The full named `KSDATAFORMAT_SUBTYPE_*` GUID catalogue (the
 symbolic-name ↔ codec table beyond the `DEFINE_WAVEFORMATEX_GUID`
-template) is deferred to a later round.
+template) lands in round 295 (see below).
+
+## The `KSDATAFORMAT_SUBTYPE_*` GUID catalogue (round 295)
+
+[`KsSubtype::resolve`] takes the `SubFormat` [`Guid`] of a
+`WAVEFORMATEXTENSIBLE` descriptor and classifies it:
+
+- **`WaveFormatEx { tag }`** — the GUID matches the
+  `…-0000-0010-8000-00aa00389b71` base template (`Data2 == 0x0000`); the
+  `Data1` low word is the legacy `WAVE_FORMAT_*` tag. The catalogued
+  symbolic names cover `…_WAVEFORMATEX` / `…_PCM` / `…_ADPCM` /
+  `…_IEEE_FLOAT` / `…_ALAW` / `…_MULAW` / `…_DTS` / `…_DRM` / `…_MPEG` /
+  `…_DOLBY_AC3_SPDIF` (the worked example from *Converting Between Format
+  Tags and Subformat GUIDs*).
+- **`Iec61937 { cea861_type }`** — the GUID carries the `0x0cea` `Data2`
+  discriminator (the Windows-7+ S/PDIF / HDMI compressed-passthrough
+  family); the `Data1` low word is then a CEA-861 *stream-type* index
+  (not a `wFormatTag`). Catalogued: `…_IEC61937_MPEG1` / `…_MPEG2` /
+  `…_MPEG3` / `…_AAC` / `…_ATRAC` / `…_ONE_BIT_AUDIO` /
+  `…_DOLBY_DIGITAL_PLUS` / `…_DTS_HD` / `…_DOLBY_MLP` / `…_DST`.
+- **`Other(Guid)`** — neither template matches (a vendor/proprietary
+  root GUID); the raw value is preserved for full-128-bit matching by
+  the caller.
+
+`KsSubtype::symbolic_name()` returns the `KSDATAFORMAT_SUBTYPE_*`
+constant name and `description()` a short codec string (both `None` for
+uncatalogued tags / indices / vendor GUIDs). The `waveformatex_guid` /
+`iec61937_guid` builders reconstruct a template GUID from a tag /
+stream-type index, and `waveformatex_name` / `iec61937_name` expose the
+lookup tables directly. The MAT 2.0 Atmos variants and the
+Media-Foundation `MFAudioFormat_*` parallel namespace stay deferred.
 
 ## The `LIST INFO` metadata decoder (round 275)
 
@@ -227,8 +265,11 @@ while let Some(chunk) = walker.read_next().unwrap() {
   GUIDs* — the source for the round-267 `WAVEFORMATEX(TENSIBLE)`
   field layout + `DEFINE_WAVEFORMATEX_GUID` sub-format resolver.
   The consolidated `ksdataformat-subtype-guids.md` named-GUID
-  catalogue stays staged for the full subtype table in a later
-  round.
+  catalogue, `ms-subformat-guids-compressed-audio.md` (the CEA-861
+  IEC 61937 stream-type table), and
+  `ms-converting-format-tags-and-subformat-guids.md` (the
+  `DEFINE_WAVEFORMATEX_GUID` macro + the `…_DOLBY_AC3_SPDIF` worked
+  example) are the source for the round-295 `KsSubtype` catalogue.
 - `docs/container/riff/metadata/microsoft-riffmci.pdf` §2 —
   "INFO List Chunk" (the registered global `INFO` form-type + the
   23-entry baseline tag table) and "NULL-Terminated String (ZSTR)

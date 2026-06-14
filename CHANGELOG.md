@@ -9,6 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 295 — named `KSDATAFORMAT_SUBTYPE_*` GUID catalogue.** A
+  classifier layer on top of the round-267 `Guid` decoder, sourced from
+  the staged `ksdataformat-subtype-guids.md` catalogue +
+  `ms-subformat-guids-compressed-audio.md` (CEA-861 IEC 61937 table) +
+  `ms-converting-format-tags-and-subformat-guids.md`
+  (`DEFINE_WAVEFORMATEX_GUID` macro).
+
+  - `subtype::KsSubtype::resolve(&Guid)` classifies a `SubFormat` GUID
+    into `WaveFormatEx { tag }` (base template, `Data2 == 0x0000`, the
+    `Data1` low word is the legacy `WAVE_FORMAT_*` tag), `Iec61937
+    { cea861_type }` (the Windows-7+ passthrough family, discriminated
+    by the `0x0cea` `Data2` marker, the `Data1` low word being a CEA-861
+    stream-type index), or `Other(Guid)` (a vendor/proprietary root
+    GUID preserved verbatim).
+  - `KsSubtype::symbolic_name()` / `description()` return the
+    `KSDATAFORMAT_SUBTYPE_*` constant name + a short codec string.
+    Family-1 covers `…_WAVEFORMATEX` / `…_PCM` / `…_ADPCM` /
+    `…_IEEE_FLOAT` / `…_ALAW` / `…_MULAW` / `…_DTS` / `…_DRM` /
+    `…_MPEG` / `…_DOLBY_AC3_SPDIF`; Family-2 covers `…_IEC61937_MPEG1`
+    / `…_MPEG2` / `…_MPEG3` / `…_AAC` / `…_ATRAC` / `…_ONE_BIT_AUDIO` /
+    `…_DOLBY_DIGITAL_PLUS` / `…_DTS_HD` / `…_DOLBY_MLP` / `…_DST`.
+  - `subtype::waveformatex_guid(tag)` / `iec61937_guid(index)` build a
+    template GUID; `waveformatex_name` / `iec61937_name` expose the
+    lookup tables; `IEC61937_DATA2` names the `0x0cea` discriminator.
+  - 11 new unit tests covering both template builders, the
+    WAVEFORMATEX-family resolve (PCM / float / A-law / mu-law / the
+    AC-3 worked example), the IEC 61937 family resolve, the
+    `0x0cea`-vs-`0x0000` discrimination on a shared `Data1` low word, an
+    uncatalogued-but-valid tag (MP3 0x0055), a non-template `Other`
+    GUID, and reserved CEA-861 indices.
+  - Re-exported at the crate root: `KsSubtype`, `waveformatex_guid`,
+    `iec61937_guid`, `waveformatex_name`, `iec61937_name`,
+    `IEC61937_DATA2`.
+
 - **Round 289 — BWF `bext` broadcast-extension decoder.** A typed
   reader for the Broadcast Audio Extension chunk, per EBU Tech 3285 v2
   (`broadcast_audio_extension` struct + per-field descriptions + §1.1
@@ -174,9 +208,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `RF64` / `BW64` 64-bit-extended outer wrapper + `ds64`
   side-table (EBU Tech 3306 §4).
-- Full named `KSDATAFORMAT_SUBTYPE_*` GUID catalogue (the
-  symbolic-name ↔ codec table beyond the `DEFINE_WAVEFORMATEX_GUID`
-  template `WaveFormat` already resolves).
+- The Media-Foundation `MFAudioFormat_*` parallel namespace and the
+  MAT 2.0 Atmos IEC 61937 variants (the round-295 `KsSubtype` catalogue
+  covers the WAVEFORMATEX-derived + base IEC 61937 families).
 - WAV metadata-bearing chunks: the `LIST INFO` vendor / iTunes-era
   sub-IDs beyond the 23-entry baseline (RecordingBlogs + ExifTool
   catalog), BWF `iXML` / `qlty` / `mext`, `cue ` / `plst` /

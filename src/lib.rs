@@ -22,8 +22,11 @@
 //! `DEFINE_WAVEFORMATEX_GUID` sub-format resolver on top; round 275 adds
 //! the `LIST INFO` metadata decoder ([`info::InfoList`]); round 289 adds
 //! the BWF `bext` broadcast-extension decoder
-//! ([`bext::BroadcastExtension`]). The full `KSDATAFORMAT_SUBTYPE_*`
-//! named-GUID catalogue is a later round.
+//! ([`bext::BroadcastExtension`]); round 295 adds the named
+//! `KSDATAFORMAT_SUBTYPE_*` GUID catalogue
+//! ([`subtype::KsSubtype`]) that classifies a `SubFormat` GUID into its
+//! `WAVEFORMATEX`-derived or IEC 61937 passthrough family and recovers
+//! its symbolic name.
 //!
 //! ## Wire format (§1.3 of the 1991 spec)
 //!
@@ -108,6 +111,7 @@ pub mod chunk;
 pub mod error;
 pub mod fourcc;
 pub mod info;
+pub mod subtype;
 pub mod walk;
 pub mod waveformat;
 
@@ -121,6 +125,9 @@ pub use chunk::{
 pub use error::{Error, Result};
 pub use fourcc::{fourcc_bytes, fourcc_to_string, is_printable_fourcc};
 pub use info::{zstr_bytes, zstr_value, InfoList, InfoTag};
+pub use subtype::{
+    iec61937_guid, iec61937_name, waveformatex_guid, waveformatex_name, KsSubtype, IEC61937_DATA2,
+};
 pub use walk::{ChunkRef, Walker};
 pub use waveformat::{
     ExtensibleFields, Guid, WaveFormat, KSDATAFORMAT_SUBTYPE_WAVEFORMATEX_BASE, WAVE_FORMAT_ADPCM,
