@@ -28,7 +28,10 @@
 //! `WAVEFORMATEX`-derived or IEC 61937 passthrough family and recovers
 //! its symbolic name; round 301 adds the `cue ` cue-points decoder
 //! ([`cue::CueChunk`]) that parses the cue-point table (the `dwCuePoints`
-//! count plus the 24-byte `<cue-point>` records).
+//! count plus the 24-byte `<cue-point>` records); round 307 adds the
+//! `plst` playlist decoder ([`plst::Playlist`]) that parses the
+//! play-segment table (the `dwSegments` count plus the 12-byte
+//! `<play-segment>` records) ordering cue points into a play sequence.
 //!
 //! ## Wire format (§1.3 of the 1991 spec)
 //!
@@ -114,6 +117,7 @@ pub mod cue;
 pub mod error;
 pub mod fourcc;
 pub mod info;
+pub mod plst;
 pub mod subtype;
 pub mod walk;
 pub mod waveformat;
@@ -129,6 +133,7 @@ pub use cue::{CueChunk, CuePoint, CUE_POINT_LEN, FOURCC_CUE};
 pub use error::{Error, Result};
 pub use fourcc::{fourcc_bytes, fourcc_to_string, is_printable_fourcc};
 pub use info::{zstr_bytes, zstr_value, InfoList, InfoTag};
+pub use plst::{PlaySegment, Playlist, FOURCC_PLST, PLAY_SEGMENT_LEN};
 pub use subtype::{
     iec61937_guid, iec61937_name, waveformatex_guid, waveformatex_name, KsSubtype, IEC61937_DATA2,
 };

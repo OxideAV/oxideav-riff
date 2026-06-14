@@ -6,7 +6,7 @@ File Format) chunk-walking primitives, per the publicly-published
 and Microsoft released in August 1991 and re-affirmed in the modern
 Microsoft Learn *Resource Interchange File Format (RIFF)* page.
 
-## Status — round 301
+## Status — round 307
 
 This crate ships the **shared chunk-walking primitives** that every
 RIFF-family parser needs: a `ChunkHeader` decoder, a non-recursive
@@ -58,7 +58,13 @@ Round 301 adds the **`cue ` cue-points decoder** ([`CueChunk`] /
 `dwChunkStart` / `dwBlockStart` / `dwSampleOffset`), with the body-length
 ↔ count cross-check that rejects a truncated or over-long chunk.
 
-Remaining codec-specific chunk bodies (`data` / `iXML` / `plst` /
+Round 307 adds the **`plst` playlist decoder** ([`Playlist`] /
+[`PlaySegment`]): the `dwSegments` count prefix plus the array of 12-byte
+`<play-segment>` records (`dwName` / `dwLength` / `dwLoops`), ordering the
+cue points of a `cue ` chunk into a play sequence, with the body-length
+↔ count cross-check that rejects a truncated or over-long chunk.
+
+Remaining codec-specific chunk bodies (`data` / `iXML` /
 `LIST adtl` / `smpl` / `inst` / `axml` / `chna` / `ds64` RF64 /
 `id3 `) are deferred to subsequent rounds and stack on top of the walker.
 
@@ -260,10 +266,41 @@ walker via `Walker::read_body`) and returns a typed table:
   access); `len()` / `is_empty()` round out the API. `FOURCC_CUE` and
   `CUE_POINT_LEN` are exposed as constants.
 
-The companion `plst` playlist chunk (which orders cue IDs into a play
-sequence) and the `LIST adtl` associated-data sub-chunks (`labl` /
-`note` / `ltxt` / `file`, which attach text and segments to cue IDs)
-stay deferred to later rounds; they stack on `CueChunk` and the walker.
+The `LIST adtl` associated-data sub-chunks (`labl` / `note` / `ltxt` /
+`file`, which attach text and segments to cue IDs) stay deferred to a
+later round; they stack on `CueChunk` and the walker. The companion
+`plst` playlist chunk lands in round 307 (see below).
+
+## The `plst` playlist chunk decoder (round 307)
+
+A `plst` chunk specifies a play order for the cue points of a `cue `
+chunk: it turns the unordered marker table into a sequence of segments to
+render, each segment naming a cue point, how many samples to play from
+it, and how many times to loop that section. [`Playlist::parse`] takes a
+`plst` chunk body (pulled from the walker via `Walker::read_body`) and
+returns a typed table:
+
+- **Count + record array** — a `dwSegments` `u32` count followed by that
+  many 12-byte `<play-segment>` records. The body length must equal
+  `4 + dwSegments × 12` exactly; a body that is shorter than the count
+  word, or whose length disagrees with the declared count, is rejected
+  with `Error::invalid` rather than yielding a partially-populated table.
+- **[`PlaySegment`]** — the three little-endian fields: `name` (`dwName`,
+  the cue point this segment plays — it must match a `dwName` in the
+  `cue ` cue-point table), `length` (`dwLength`, the section length in
+  samples), and `loops` (`dwLoops`, the play-repeat count). The cue
+  reference is recorded but not resolved, since the decoder has no view of
+  the surrounding chunk tree.
+- **Lookups** — `segments()` exposes the records in on-wire (play) order;
+  `by_name(name)` returns the first segment referencing a given cue
+  `dwName` (unlike a cue point's unique `dwName`, a playlist may reference
+  the same cue point in more than one segment, so this returns the first
+  match in play order); `len()` / `is_empty()` round out the API.
+  `FOURCC_PLST` and `PLAY_SEGMENT_LEN` are exposed as constants.
+
+The `LIST adtl` associated-data sub-chunks (`labl` / `note` / `ltxt` /
+`file`) stay deferred to a later round; they stack on `CueChunk` /
+`Playlist` and the walker.
 
 ## Standalone build
 
@@ -330,6 +367,10 @@ while let Some(chunk) = walker.read_next().unwrap() {
   "Cue-Points Chunk" (the `<cue-ck>` / `<cue-point>` grammar, the
   per-field descriptions, and the file-position worked examples) — the
   source for the round-301 `cue ` decoder.
+- `docs/container/riff/metadata/microsoft-riffmci.pdf` §2 —
+  "Playlist Chunk" (the `<playlist-ck>` / `<play-segment>` grammar and
+  the per-field descriptions) — the source for the round-307 `plst`
+  decoder.
 - `docs/container/riff/metadata/ebu-tech3285-bwf.pdf` — EBU Tech 3285
   v2, *Specification of the Broadcast Wave Format (BWF)*: the
   `broadcast_audio_extension` struct, the per-field descriptions, and

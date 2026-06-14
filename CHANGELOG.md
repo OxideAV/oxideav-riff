@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 307 — `plst` playlist chunk decoder.** A typed body decoder
+  for the WAV / RIFF playlist chunk, sourced from the "Playlist Chunk"
+  section of `microsoft-riffmci.pdf`. It orders the cue points of a
+  `cue ` chunk into a play sequence.
+
+  - `plst::Playlist::parse(body)` decodes the `dwSegments` count prefix
+    followed by that many 12-byte `<play-segment>` records. The declared
+    count must account for exactly the remaining body length; a short or
+    over-long body is rejected (`Error::invalid`) rather than silently
+    truncated.
+  - `plst::PlaySegment` exposes the three little-endian fields (`name`,
+    referencing a `cue ` `dwName`; `length`, the section length in
+    samples; `loops`, the play-repeat count). The cue reference is
+    recorded but not resolved (the decoder has no view of the surrounding
+    chunk tree).
+  - `Playlist::segments()` / `len()` / `is_empty()` / `by_name(name)`
+    plus `FOURCC_PLST` and `PLAY_SEGMENT_LEN` constants. Unlike a cue
+    `dwName`, a playlist may reference the same cue point more than once,
+    so `by_name` returns the first match in play order.
+  - 9 unit tests covering single / multi-segment ordering, repeated cue
+    references, `by_name` lookup, the empty chunk, and the short /
+    count-mismatch / over-long rejection paths.
+
 - **Round 301 — `cue ` cue-points chunk decoder.** A typed body decoder
   for the WAV / RIFF cue-points chunk, sourced from the "Cue-Points
   Chunk" section of `microsoft-riffmci.pdf`.
