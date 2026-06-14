@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 301 — `cue ` cue-points chunk decoder.** A typed body decoder
+  for the WAV / RIFF cue-points chunk, sourced from the "Cue-Points
+  Chunk" section of `microsoft-riffmci.pdf`.
+
+  - `cue::CueChunk::parse(body)` decodes the `dwCuePoints` count prefix
+    followed by that many 24-byte `<cue-point>` records. The declared
+    count must account for exactly the remaining body length; a short or
+    over-long body is rejected (`Error::invalid`) rather than silently
+    truncated.
+  - `cue::CuePoint` exposes the six little-endian fields (`name` /
+    `position` / `fcc_chunk` / `chunk_start` / `block_start` /
+    `sample_offset`), with `is_data()` / `is_silent()` helpers over the
+    raw `fccChunk` FourCC. The raw offset fields are preserved without
+    interpretation (their meaning depends on the surrounding `wavl` /
+    single-`data`, PCM / compressed layout that this decoder cannot see).
+  - `CueChunk::points()` / `len()` / `is_empty()` / `by_name(name)` plus
+    `FOURCC_CUE` and `CUE_POINT_LEN` constants.
+  - 10 unit tests covering single-point PCM, multi-point ordering,
+    `slnt` / non-`data` FourCCs, `by_name` lookup, the empty chunk, and
+    the short / count-mismatch / over-long rejection paths.
+
 - **Round 295 — named `KSDATAFORMAT_SUBTYPE_*` GUID catalogue.** A
   classifier layer on top of the round-267 `Guid` decoder, sourced from
   the staged `ksdataformat-subtype-guids.md` catalogue +

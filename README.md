@@ -6,7 +6,7 @@ File Format) chunk-walking primitives, per the publicly-published
 and Microsoft released in August 1991 and re-affirmed in the modern
 Microsoft Learn *Resource Interchange File Format (RIFF)* page.
 
-## Status — round 295
+## Status — round 301
 
 This crate ships the **shared chunk-walking primitives** that every
 RIFF-family parser needs: a `ChunkHeader` decoder, a non-recursive
@@ -52,8 +52,14 @@ Windows-7+ IEC 61937 compressed-passthrough subtypes (`…_IEC61937_MPEG1`
 discriminated by the `0x0cea` `Data2` marker — returning the symbolic
 name and a codec description.
 
-Remaining codec-specific chunk bodies (`data` / `iXML` / `cue ` /
-`plst` / `LIST adtl` / `smpl` / `inst` / `axml` / `chna` / `ds64` RF64 /
+Round 301 adds the **`cue ` cue-points decoder** ([`CueChunk`] /
+[`CuePoint`]): the `dwCuePoints` count prefix plus the array of 24-byte
+`<cue-point>` records (`dwName` / `dwPosition` / `fccChunk` /
+`dwChunkStart` / `dwBlockStart` / `dwSampleOffset`), with the body-length
+↔ count cross-check that rejects a truncated or over-long chunk.
+
+Remaining codec-specific chunk bodies (`data` / `iXML` / `plst` /
+`LIST adtl` / `smpl` / `inst` / `axml` / `chna` / `ds64` RF64 /
 `id3 `) are deferred to subsequent rounds and stack on top of the walker.
 
 ## What the walker covers (round 257)
@@ -213,6 +219,52 @@ The `iXML` companion metadata block, the `qlty` / `mext` BWF
 supplements, and the `axml` / `chna` ADM chunks stay deferred to later
 rounds.
 
+## The `cue ` cue-points chunk decoder (round 301)
+
+A `cue ` chunk (note the trailing space in the FourCC) marks a series of
+positions in the sample stream — seek markers a player can jump to, and
+the anchors the `plst` playlist and `LIST adtl` associated-data chunks
+reference. [`CueChunk::parse`] takes a `cue ` chunk body (pulled from the
+walker via `Walker::read_body`) and returns a typed table:
+
+- **Count + record array** — a `dwCuePoints` `u32` count followed by that
+  many 24-byte `<cue-point>` records. The body length must equal
+  `4 + dwCuePoints × 24` exactly; a body that is shorter than the count
+  word, or whose length disagrees with the declared count, is rejected
+  with `Error::invalid` rather than yielding a partially-populated table.
+- **[`CuePoint`]** — the six little-endian fields: `name` (`dwName`, the
+  unique identifier other chunks reference), `position` (`dwPosition`,
+  the sequential play-order sample number), `fcc_chunk` (`fccChunk`, the
+  raw FourCC of the containing chunk — `data` or `slnt`), `chunk_start`,
+  `block_start`, and `sample_offset`. `is_data()` / `is_silent()` test
+  the FourCC; a non-`data`/`slnt` value round-trips verbatim.
+- **Offset interpretation deferred to the caller** — `dwChunkStart` /
+  `dwBlockStart` / `dwSampleOffset` mean different things depending on
+  whether the file wraps its samples in a `wavl` LIST or carries a single
+  `data` chunk, and whether the data is PCM or compressed. The spec's
+  worked cases are:
+
+  | Layout                       | `chunk_start` | `block_start`                 | `sample_offset`              |
+  | ---------------------------- | ------------- | ----------------------------- | ---------------------------- |
+  | single PCM `data`            | 0             | 0                             | sample pos within `data`     |
+  | single compressed `data`     | 0             | block pos within `data`       | sample pos within the block  |
+  | `wavl` PCM `data`            | `data` pos in `wavl`     | cue pos in `wavl` data | 0               |
+  | `wavl` `slnt`               | `slnt` pos in `wavl`     | `slnt` data pos in `wavl` | sample pos in `slnt` |
+
+  The decoder records the raw values and does not resolve them, since it
+  has no view of the surrounding chunk tree.
+
+- **Lookups** — `points()` exposes the records in on-wire order;
+  `by_name(name)` returns the first cue point with a matching `dwName`
+  (the spec requires `dwName` to be unique, so this is effectively keyed
+  access); `len()` / `is_empty()` round out the API. `FOURCC_CUE` and
+  `CUE_POINT_LEN` are exposed as constants.
+
+The companion `plst` playlist chunk (which orders cue IDs into a play
+sequence) and the `LIST adtl` associated-data sub-chunks (`labl` /
+`note` / `ltxt` / `file`, which attach text and segments to cue IDs)
+stay deferred to later rounds; they stack on `CueChunk` and the walker.
+
 ## Standalone build
 
 `oxideav-core` is gated behind the default-on `registry` feature.
@@ -274,6 +326,10 @@ while let Some(chunk) = walker.read_next().unwrap() {
   "INFO List Chunk" (the registered global `INFO` form-type + the
   23-entry baseline tag table) and "NULL-Terminated String (ZSTR)
   Format" — the source for the round-275 `LIST INFO` decoder.
+- `docs/container/riff/metadata/microsoft-riffmci.pdf` §2 —
+  "Cue-Points Chunk" (the `<cue-ck>` / `<cue-point>` grammar, the
+  per-field descriptions, and the file-position worked examples) — the
+  source for the round-301 `cue ` decoder.
 - `docs/container/riff/metadata/ebu-tech3285-bwf.pdf` — EBU Tech 3285
   v2, *Specification of the Broadcast Wave Format (BWF)*: the
   `broadcast_audio_extension` struct, the per-field descriptions, and

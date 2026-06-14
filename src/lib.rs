@@ -26,7 +26,9 @@
 //! `KSDATAFORMAT_SUBTYPE_*` GUID catalogue
 //! ([`subtype::KsSubtype`]) that classifies a `SubFormat` GUID into its
 //! `WAVEFORMATEX`-derived or IEC 61937 passthrough family and recovers
-//! its symbolic name.
+//! its symbolic name; round 301 adds the `cue ` cue-points decoder
+//! ([`cue::CueChunk`]) that parses the cue-point table (the `dwCuePoints`
+//! count plus the 24-byte `<cue-point>` records).
 //!
 //! ## Wire format (§1.3 of the 1991 spec)
 //!
@@ -108,6 +110,7 @@
 
 pub mod bext;
 pub mod chunk;
+pub mod cue;
 pub mod error;
 pub mod fourcc;
 pub mod info;
@@ -122,6 +125,7 @@ pub use bext::{
 pub use chunk::{
     read_chunk_header, read_form_type, skip_chunk, skip_pad, ChunkHeader, FOURCC_LIST, FOURCC_RIFF,
 };
+pub use cue::{CueChunk, CuePoint, CUE_POINT_LEN, FOURCC_CUE};
 pub use error::{Error, Result};
 pub use fourcc::{fourcc_bytes, fourcc_to_string, is_printable_fourcc};
 pub use info::{zstr_bytes, zstr_value, InfoList, InfoTag};
