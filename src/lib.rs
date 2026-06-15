@@ -39,7 +39,13 @@
 //! BW64 `ds64` data-size-64 decoder ([`ds64::DataSize64`]) that lifts
 //! the 4 GiB size cap — the three mandatory 64-bit values (`riffSize` /
 //! `dataSize` / `sampleCount`) plus the optional `<chunkSize64>`
-//! size-override table — and the `0xFFFFFFFF` deferral-sentinel helpers.
+//! size-override table — and the `0xFFFFFFFF` deferral-sentinel helpers;
+//! round 319 adds the WAV `fact` chunk decoder ([`fact::Fact`]) that
+//! decodes the mandatory `dwSampleLength` per-channel sample count
+//! (required for compressed and `wavl`-LIST waveforms), retains any
+//! reserved trailing future-format fields verbatim, and recognises the
+//! RF64 / BW64 `0xFFFFFFFF` sentinel that defers the true count to the
+//! `ds64` chunk's `sampleCount`.
 //!
 //! ## Wire format (§1.3 of the 1991 spec)
 //!
@@ -125,6 +131,7 @@ pub mod chunk;
 pub mod cue;
 pub mod ds64;
 pub mod error;
+pub mod fact;
 pub mod fourcc;
 pub mod info;
 pub mod plst;
@@ -149,6 +156,7 @@ pub use ds64::{
     FOURCC_BW64, FOURCC_DS64, FOURCC_RF64, SIZE_SENTINEL,
 };
 pub use error::{Error, Result};
+pub use fact::{Fact, FACT_MIN_LEN, FOURCC_FACT};
 pub use fourcc::{fourcc_bytes, fourcc_to_string, is_printable_fourcc};
 pub use info::{zstr_bytes, zstr_value, InfoList, InfoTag};
 pub use plst::{PlaySegment, Playlist, FOURCC_PLST, PLAY_SEGMENT_LEN};

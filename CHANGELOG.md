@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 319 — WAV `fact` chunk decoder.** A typed reader for the
+  WAVE `fact` chunk, sourced from the 1991 RIFF MCI spec §2 ("FACT
+  Chunk"). `Fact::parse` decodes the mandatory `dwSampleLength` — the
+  per-channel sample count the chunk records so a player can derive
+  exact duration when the audio is compressed (the `data` byte count no
+  longer maps to samples by a fixed `wBlockAlign`) or scattered across
+  a `wavl` LIST. Per the spec's forward-compatibility rule the decoder
+  keeps any reserved trailing fields (sized by the chunk header) verbatim
+  in `Fact::extra` rather than rejecting a longer body, and recognises
+  the RF64 / BW64 `0xFFFFFFFF` sentinel (EBU Tech 3306 §A, whose `ds64`
+  `sampleCount` "replaces the sample count value in the 'fact' chunk")
+  via `is_deferred` / `sample_length()`, returning `None` for the
+  deferred case so callers resolve the real 64-bit count from a parsed
+  `ds64` chunk. Adds the `FOURCC_FACT` / `FACT_MIN_LEN` constants.
+
 - **Round 314 — RF64 / BW64 `ds64` data-size-64 decoder.** A typed
   reader for the MBWF / RF64 64-bit size-extension chunk, sourced from
   EBU Tech 3306 §A.2 ("New Chunks and Structs in the RF64/WAVE (MBWF)

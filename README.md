@@ -101,6 +101,14 @@ The wire-format invariants enforced:
   marker and the `RF64` / `BW64` outer FourCCs; `DataSize64::resolve`
   returns a chunk's real size given its 32-bit header value, consulting
   the table only when the value is the sentinel.
+- **`fact` chunk** ([`Fact`]) — the mandatory `dwSampleLength`
+  per-channel sample count (required for compressed and `wavl`-LIST
+  waveforms, optional for plain PCM `data`), with the spec's
+  forward-compatibility rule honoured: reserved trailing fields sized by
+  the chunk header are kept verbatim in `extra` rather than rejected.
+  `is_deferred` / `sample_length()` recognise the RF64 / BW64
+  `0xFFFFFFFF` sentinel that hands the true 64-bit count to the `ds64`
+  chunk's `sampleCount`, returning `None` so callers resolve it there.
 
 ## Standalone build
 
