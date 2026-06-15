@@ -15,9 +15,9 @@ parent chunk's children, FourCC helpers, and the crate's own `Error` /
 
 The walker is codec-agnostic; the typed decoders stack on top of it.
 Codec-specific chunk bodies not yet covered (`data` / `iXML` / `smpl` /
-`inst` / `axml` / `chna` / `ds64` RF64 / `id3 `) and the `RF64` / `BW64`
-64-bit-extended outer wrappers (EBU Tech 3306) are deferred to later
-work.
+`inst` / `axml` / `chna` / `id3 `) are deferred to later work; the
+`RF64` / `BW64` 64-bit-extended outer wrappers are now handled via the
+`ds64` decoder (EBU Tech 3306).
 
 ## The walker
 
@@ -90,6 +90,17 @@ The wire-format invariants enforced:
   of unrecognised child FourCCs. The `ltxt` `wCountry` / `wLanguage` /
   `wDialect` numeric-code tables are recorded as raw `u16` values; a
   typed lookup for them is deferred.
+- **RF64 / BW64 `ds64` data-size-64** ([`DataSize64`] / [`ChunkSize64`])
+  — the MBWF / RF64 64-bit size extension that lifts the format's 4 GiB
+  cap. The 28-byte fixed prefix carries the three mandatory 64-bit
+  values (`riffSize` / `dataSize` / `sampleCount`) that replace the
+  `0xFFFFFFFF`-sentinel 32-bit fields elsewhere in the file, followed by
+  the optional `<chunkSize64>` table of per-chunk 64-bit size overrides
+  (each a FourCC + 64-bit size), with a body-length ↔ count cross-check.
+  `is_sentinel` / `is_rf64_magic` classify the `0xFFFFFFFF` deferral
+  marker and the `RF64` / `BW64` outer FourCCs; `DataSize64::resolve`
+  returns a chunk's real size given its 32-bit header value, consulting
+  the table only when the value is the sentinel.
 
 ## Standalone build
 
@@ -137,6 +148,10 @@ while let Some(chunk) = walker.read_next().unwrap() {
   resolver, and the named-GUID + IEC 61937 catalogues for `KsSubtype`.
 - `docs/container/riff/metadata/ebu-tech3285-bwf.pdf` — EBU Tech 3285
   v2, the source for the `bext` decoder.
+- `docs/container/riff/metadata/ebu-tech3306-v1.pdf` §A.2 +
+  `…/ebu-tech3306-v2.pdf` §1 — EBU Tech 3306 (MBWF / RF64), the source
+  for the `ds64` data-size-64 decoder and the `RF64` / `BW64` outer
+  wrappers.
 - `docs/container/riff/metadata/README.md` — staged catalogue of the
   WAV metadata-bearing chunks for later work.
 

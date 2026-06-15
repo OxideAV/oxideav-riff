@@ -35,7 +35,11 @@
 //! round 310 adds the `LIST adtl` associated-data decoder
 //! ([`adtl::AdtlList`]) that collects the `labl` / `note` / `ltxt` /
 //! `file` child chunks attaching labels, comments, length-bounded text,
-//! and embedded media files to cue points.
+//! and embedded media files to cue points; round 314 adds the RF64 /
+//! BW64 `ds64` data-size-64 decoder ([`ds64::DataSize64`]) that lifts
+//! the 4 GiB size cap — the three mandatory 64-bit values (`riffSize` /
+//! `dataSize` / `sampleCount`) plus the optional `<chunkSize64>`
+//! size-override table — and the `0xFFFFFFFF` deferral-sentinel helpers.
 //!
 //! ## Wire format (§1.3 of the 1991 spec)
 //!
@@ -119,6 +123,7 @@ pub mod adtl;
 pub mod bext;
 pub mod chunk;
 pub mod cue;
+pub mod ds64;
 pub mod error;
 pub mod fourcc;
 pub mod info;
@@ -139,6 +144,10 @@ pub use chunk::{
     read_chunk_header, read_form_type, skip_chunk, skip_pad, ChunkHeader, FOURCC_LIST, FOURCC_RIFF,
 };
 pub use cue::{CueChunk, CuePoint, CUE_POINT_LEN, FOURCC_CUE};
+pub use ds64::{
+    is_rf64_magic, is_sentinel, ChunkSize64, DataSize64, CHUNK_SIZE64_LEN, DS64_PREFIX_LEN,
+    FOURCC_BW64, FOURCC_DS64, FOURCC_RF64, SIZE_SENTINEL,
+};
 pub use error::{Error, Result};
 pub use fourcc::{fourcc_bytes, fourcc_to_string, is_printable_fourcc};
 pub use info::{zstr_bytes, zstr_value, InfoList, InfoTag};

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Round 314 — RF64 / BW64 `ds64` data-size-64 decoder.** A typed
+  reader for the MBWF / RF64 64-bit size-extension chunk, sourced from
+  EBU Tech 3306 §A.2 ("New Chunks and Structs in the RF64/WAVE (MBWF)
+  format") and the v2 `BW64` ADM variant. `DataSize64::parse` decodes
+  the 28-byte fixed prefix — the three mandatory 64-bit values
+  (`riffSize` / `dataSize` / `sampleCount`) that replace the file's
+  `0xFFFFFFFF`-sentinel 32-bit fields — plus the optional
+  `<chunkSize64>` table of per-chunk 64-bit size overrides, with the
+  same body-length ↔ count cross-check the other decoders use. Adds
+  `is_sentinel` / `is_rf64_magic` predicates, the `FOURCC_RF64` /
+  `FOURCC_BW64` / `FOURCC_DS64` constants, and
+  `DataSize64::resolve` / `size_for` to look a chunk's real size up by
+  FourCC.
+
 ## [0.0.2](https://github.com/OxideAV/oxideav-riff/compare/v0.0.1...v0.0.2) - 2026-06-15
 
 ### Added
