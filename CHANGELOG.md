@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.2](https://github.com/OxideAV/oxideav-riff/compare/v0.0.1...v0.0.2) - 2026-06-15
+
+### Added
+
+- *(info)* LIST INFO metadata decoder (round 275)
+
+### Other
+
+- round 310 — LIST adtl associated-data decoder
+- typed playlist-chunk decoder (round 307)
+- round 301 — cue cue-points chunk decoder
+- named KSDATAFORMAT_SUBTYPE_* GUID catalogue (round 295)
+- add BWF `bext` Broadcast Audio Extension decoder (EBU Tech 3285 v2)
+- typed WAV `fmt ` chunk decoder — WAVEFORMATEX(TENSIBLE) + GUID resolver
+- neutralise enumerated-denial paragraph in CHANGELOG (r257 brief-inheritance scrub-in-place)
+
 ### Added
 
 - **Round 310 — `LIST adtl` associated-data decoder.** A typed reader
