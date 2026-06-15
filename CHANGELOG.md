@@ -9,6 +9,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 310 — `LIST adtl` associated-data decoder.** A typed reader
+  for the WAV / RIFF associated-data list, sourced from the "Associated
+  Data Chunk" section of `microsoft-riffmci.pdf`. It attaches labels,
+  comments, length-bounded text, and embedded media files to the cue
+  points of a `cue ` chunk, completing the cue-points triad with the
+  round-301 `cue ` and round-307 `plst` decoders.
+
+  - `adtl::AdtlList::collect_from(walker)` walks a `LIST adtl` sub-tree
+    (built after reading the `adtl` list-type with
+    `Walker::read_inner_form_type`) into an ordered list of entries; a
+    non-`adtl` list-type is rejected.
+  - `adtl::AdtlEntry` — one decoded child: `Label { name, text }` /
+    `Note { name, text }` (a `dwName` `u32` + ZSTR text), `LabeledText`
+    (the `ltxt` 20-byte prefix — `name` / `sample_length` / `purpose`
+    FourCC / `country` / `language` / `dialect` / `code_page` — plus raw
+    trailing text), `File` (the `file` 8-byte `name` / `med_type` prefix
+    plus an opaque payload), and `Other { fourcc, body }` for an
+    unrecognised child FourCC (preserved verbatim).
+  - Length invariants: a `labl` / `note` body shorter than the 4-byte
+    `dwName`, an `ltxt` body shorter than its 20-byte prefix, or a `file`
+    body shorter than its 8-byte prefix is rejected (`Error::invalid`).
+  - Cue cross-reference recorded but not resolved: `AdtlEntry::cue_name()`,
+    `AdtlList::by_cue_name(name)` (all entries for a cue point),
+    `label(name)` / `note(name)` (first text for a cue point), plus
+    `entries()` / `len()` / `is_empty()` and the `FOURCC_ADTL` /
+    `FOURCC_LABL` / `FOURCC_NOTE` / `FOURCC_LTXT` / `FOURCC_FILE` /
+    `LTXT_PREFIX_LEN` / `FILE_PREFIX_LEN` constants.
+  - 16 unit tests covering each child kind's parse, the ZSTR
+    missing-terminator path, the `ltxt` / `file` prefix-only (empty
+    trailing data) cases, the three short-body rejections, the unknown
+    child arm, the `collect_from` happy path with cue cross-reference,
+    odd-length-body pad re-sync, the non-`adtl` list-type rejection, and
+    the empty list.
+  - Re-exported at the crate root: `AdtlEntry`, `AdtlList`,
+    `EmbeddedFile`, `LabeledText`, and the FourCC + prefix-length
+    constants.
+
 - **Round 307 — `plst` playlist chunk decoder.** A typed body decoder
   for the WAV / RIFF playlist chunk, sourced from the "Playlist Chunk"
   section of `microsoft-riffmci.pdf`. It orders the cue points of a

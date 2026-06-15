@@ -31,7 +31,11 @@
 //! count plus the 24-byte `<cue-point>` records); round 307 adds the
 //! `plst` playlist decoder ([`plst::Playlist`]) that parses the
 //! play-segment table (the `dwSegments` count plus the 12-byte
-//! `<play-segment>` records) ordering cue points into a play sequence.
+//! `<play-segment>` records) ordering cue points into a play sequence;
+//! round 310 adds the `LIST adtl` associated-data decoder
+//! ([`adtl::AdtlList`]) that collects the `labl` / `note` / `ltxt` /
+//! `file` child chunks attaching labels, comments, length-bounded text,
+//! and embedded media files to cue points.
 //!
 //! ## Wire format (§1.3 of the 1991 spec)
 //!
@@ -111,6 +115,7 @@
 
 #![doc(html_root_url = "https://docs.rs/oxideav-riff/0.0.1")]
 
+pub mod adtl;
 pub mod bext;
 pub mod chunk;
 pub mod cue;
@@ -122,6 +127,10 @@ pub mod subtype;
 pub mod walk;
 pub mod waveformat;
 
+pub use adtl::{
+    AdtlEntry, AdtlList, EmbeddedFile, LabeledText, FILE_PREFIX_LEN, FOURCC_ADTL, FOURCC_FILE,
+    FOURCC_LABL, FOURCC_LTXT, FOURCC_NOTE, LTXT_PREFIX_LEN,
+};
 pub use bext::{
     BroadcastExtension, Loudness, BEXT_PREFIX_LEN, DESCRIPTION_LEN, ORIGINATION_DATE_LEN,
     ORIGINATION_TIME_LEN, ORIGINATOR_LEN, ORIGINATOR_REFERENCE_LEN, RESERVED_LEN, UMID_LEN,

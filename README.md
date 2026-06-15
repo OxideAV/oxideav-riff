@@ -6,7 +6,7 @@ File Format) chunk-walking primitives, per the publicly-published
 and Microsoft released in August 1991 and re-affirmed in the modern
 Microsoft Learn *Resource Interchange File Format (RIFF)* page.
 
-## Status — round 307
+## Status — round 310
 
 This crate ships the **shared chunk-walking primitives** that every
 RIFF-family parser needs: a `ChunkHeader` decoder, a non-recursive
@@ -64,9 +64,18 @@ Round 307 adds the **`plst` playlist decoder** ([`Playlist`] /
 cue points of a `cue ` chunk into a play sequence, with the body-length
 ↔ count cross-check that rejects a truncated or over-long chunk.
 
+Round 310 adds the **`LIST adtl` associated-data decoder** ([`AdtlList`]
+/ [`AdtlEntry`]): the `labl` / `note` (cue-point label + comment ZSTRs),
+`ltxt` (length-bounded text segment, [`LabeledText`]), and `file`
+(embedded media, [`EmbeddedFile`]) child chunks, collected in on-wire
+order from a `LIST adtl` sub-tree, with cue-point cross-reference
+lookups (`by_cue_name` / `label` / `note`) and verbatim preservation of
+unrecognised child FourCCs. Completes the cue-points triad alongside the
+round-301 `cue ` and round-307 `plst` decoders.
+
 Remaining codec-specific chunk bodies (`data` / `iXML` /
-`LIST adtl` / `smpl` / `inst` / `axml` / `chna` / `ds64` RF64 /
-`id3 `) are deferred to subsequent rounds and stack on top of the walker.
+`smpl` / `inst` / `axml` / `chna` / `ds64` RF64 / `id3 `) are deferred
+to subsequent rounds and stack on top of the walker.
 
 ## What the walker covers (round 257)
 
@@ -299,8 +308,53 @@ returns a typed table:
   `FOURCC_PLST` and `PLAY_SEGMENT_LEN` are exposed as constants.
 
 The `LIST adtl` associated-data sub-chunks (`labl` / `note` / `ltxt` /
-`file`) stay deferred to a later round; they stack on `CueChunk` /
-`Playlist` and the walker.
+`file`) land in round 310 (see below).
+
+## The `LIST adtl` associated-data decoder (round 310)
+
+A `LIST` chunk whose list-type FourCC is `adtl` attaches data — labels,
+comments, length-bounded text, and embedded media files — to the cue
+points of a `cue ` chunk. Each child chunk references a cue point by its
+`dwName`. [`AdtlList::collect_from`] drives a sub-walker already
+positioned over a `LIST adtl` body (built after the caller reads the
+`adtl` list-type with `Walker::read_inner_form_type`) and gathers every
+child in on-wire order:
+
+- **[`AdtlEntry`]** — one decoded child. The four spec-defined kinds
+  plus an `Other` arm:
+  - `Label { name, text }` — a `labl` chunk: a title for the cue point.
+    The body is a `dwName` `u32` followed by a ZSTR (decoded via the
+    round-275 `zstr_value`).
+  - `Note { name, text }` — a `note` chunk: comment text for the cue
+    point. Same `dwName` + ZSTR layout as `labl`.
+  - `LabeledText(`[`LabeledText`]`)` — an `ltxt` chunk: a 20-byte fixed
+    prefix (`dwName` / `dwSampleLength` / `dwPurpose` FourCC / `wCountry`
+    / `wLanguage` / `wDialect` / `wCodePage`) plus trailing text. The
+    text is kept raw because its character set is governed by the
+    record's own `wCodePage`, not the file's global `CSET`.
+  - `File(`[`EmbeddedFile`]`)` — a `file` chunk: an 8-byte prefix
+    (`dwName` / `dwMedType`) plus an opaque embedded payload, kept as raw
+    bytes (no recursion into the embedded format).
+  - `Other { fourcc, body }` — any unrecognised child FourCC, preserved
+    verbatim (the spec says ignore, not reject).
+- **Length invariants** — a `labl` / `note` body shorter than the 4-byte
+  `dwName`, an `ltxt` body shorter than its 20-byte prefix, or a `file`
+  body shorter than its 8-byte prefix is rejected with `Error::invalid`
+  rather than yielding a partial record.
+- **Cue cross-reference** — the `dwName` link to the `cue ` table is
+  recorded but not resolved (the decoder has no view of the surrounding
+  chunk tree). `AdtlEntry::cue_name()` returns the referenced cue name
+  (`None` for `Other`); `AdtlList::by_cue_name(name)` iterates every
+  entry for a cue point (a cue may carry a label *and* a note *and*
+  several `ltxt` segments); `label(name)` / `note(name)` return the first
+  `labl` / `note` text for a cue point. `entries()` / `len()` /
+  `is_empty()` round out the API; `FOURCC_ADTL` / `FOURCC_LABL` /
+  `FOURCC_NOTE` / `FOURCC_LTXT` / `FOURCC_FILE` and `LTXT_PREFIX_LEN` /
+  `FILE_PREFIX_LEN` are exposed as constants.
+
+The `ltxt` `wCountry` / `wLanguage` / `wDialect` numeric-code tables
+(the spec's Chapter 2 enumerations) are recorded as raw `u16` values; a
+typed lookup for them stays deferred to a later round.
 
 ## Standalone build
 
@@ -371,6 +425,10 @@ while let Some(chunk) = walker.read_next().unwrap() {
   "Playlist Chunk" (the `<playlist-ck>` / `<play-segment>` grammar and
   the per-field descriptions) — the source for the round-307 `plst`
   decoder.
+- `docs/container/riff/metadata/microsoft-riffmci.pdf` §2 —
+  "Associated Data Chunk" (the `<assoc-data-list>` grammar and the
+  `labl` / `note` / `ltxt` / `file` per-field descriptions) — the source
+  for the round-310 `LIST adtl` decoder.
 - `docs/container/riff/metadata/ebu-tech3285-bwf.pdf` — EBU Tech 3285
   v2, *Specification of the Broadcast Wave Format (BWF)*: the
   `broadcast_audio_extension` struct, the per-field descriptions, and
