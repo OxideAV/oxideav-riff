@@ -45,7 +45,12 @@
 //! (required for compressed and `wavl`-LIST waveforms), retains any
 //! reserved trailing future-format fields verbatim, and recognises the
 //! RF64 / BW64 `0xFFFFFFFF` sentinel that defers the true count to the
-//! `ds64` chunk's `sampleCount`.
+//! `ds64` chunk's `sampleCount`; round 323 adds the BW64 `chna` ADM
+//! channel-allocation decoder ([`chna::ChannelAllocation`]) that parses
+//! the `numTracks` / `numUIDs` preamble plus the array of fixed 40-byte
+//! `audioID` records (`trackIndex` + `UID` / `trackRef` / `packRef`
+//! ADM identifier references), honouring the `N >= numUIDs`
+//! over-provisioning convention by skipping zero-`trackIndex` slots.
 //!
 //! ## Wire format (§1.3 of the 1991 spec)
 //!
@@ -127,6 +132,7 @@
 
 pub mod adtl;
 pub mod bext;
+pub mod chna;
 pub mod chunk;
 pub mod cue;
 pub mod ds64;
@@ -146,6 +152,10 @@ pub use adtl::{
 pub use bext::{
     BroadcastExtension, Loudness, BEXT_PREFIX_LEN, DESCRIPTION_LEN, ORIGINATION_DATE_LEN,
     ORIGINATION_TIME_LEN, ORIGINATOR_LEN, ORIGINATOR_REFERENCE_LEN, RESERVED_LEN, UMID_LEN,
+};
+pub use chna::{
+    AudioId, ChannelAllocation, AUDIO_ID_LEN, CHNA_PREFIX_LEN, FOURCC_CHNA, PACK_REF_LEN,
+    TRACK_REF_LEN, UID_LEN,
 };
 pub use chunk::{
     read_chunk_header, read_form_type, skip_chunk, skip_pad, ChunkHeader, FOURCC_LIST, FOURCC_RIFF,

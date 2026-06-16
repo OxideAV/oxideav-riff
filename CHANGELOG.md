@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 323 — BW64 `chna` ADM channel-allocation decoder.** A typed
+  reader for the *Audio Definition Model* `chna` chunk, sourced from
+  ITU-R BS.2088-2 §8 (the BW64 file format, the binary `struct
+  chna_chunk` / `struct audioID` layout that BS.2076 ADM and EBU Tech
+  3285s5 reference but defer). `ChannelAllocation::parse` decodes the
+  4-byte `numTracks` / `numUIDs` preamble followed by an array of fixed
+  40-byte `audioID` records — each a `trackIndex` (u16 LE, 1-based into
+  the `data` interleave) plus the three fixed-width non-NUL-terminated
+  ADM identifier references (`UID` `ATU_…`, `trackRef` `AT_…` or
+  `AC_…`, `packRef` `AP_…` or all-NUL). The record count is derived
+  from the body length (`N = (ckSize − 4) / 40`) with a multiple-of-40
+  cross-check, and the `N ≥ numUIDs` over-provisioning convention is
+  honoured: zeroed spare records (`trackIndex == 0`) are retained but
+  skipped by `active()` / `by_track_index()`, with `uid_count_consistent`
+  reporting whether the used-record count matches the declared
+  `numUIDs`. Identifier fields are exposed as raw byte arrays plus
+  trimmed-UTF-8 `uid_str` / `track_ref_str` / `pack_ref_str` accessors.
+  Adds the `FOURCC_CHNA` / `AUDIO_ID_LEN` / `CHNA_PREFIX_LEN` /
+  `UID_LEN` / `TRACK_REF_LEN` / `PACK_REF_LEN` constants and the
+  `AudioId` record type.
+
 - **Round 319 — WAV `fact` chunk decoder.** A typed reader for the
   WAVE `fact` chunk, sourced from the 1991 RIFF MCI spec §2 ("FACT
   Chunk"). `Fact::parse` decodes the mandatory `dwSampleLength` — the

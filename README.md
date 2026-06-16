@@ -15,9 +15,10 @@ parent chunk's children, FourCC helpers, and the crate's own `Error` /
 
 The walker is codec-agnostic; the typed decoders stack on top of it.
 Codec-specific chunk bodies not yet covered (`data` / `iXML` / `smpl` /
-`inst` / `axml` / `chna` / `id3 `) are deferred to later work; the
+`inst` / `axml` / `id3 `) are deferred to later work; the
 `RF64` / `BW64` 64-bit-extended outer wrappers are now handled via the
-`ds64` decoder (EBU Tech 3306).
+`ds64` decoder (EBU Tech 3306), and the ADM `chna` channel-allocation
+table via the `chna` decoder (ITU-R BS.2088).
 
 ## The walker
 
@@ -109,6 +110,24 @@ The wire-format invariants enforced:
   `is_deferred` / `sample_length()` recognise the RF64 / BW64
   `0xFFFFFFFF` sentinel that hands the true 64-bit count to the `ds64`
   chunk's `sampleCount`, returning `None` so callers resolve it there.
+- **BW64 `chna` ADM channel allocation** ([`ChannelAllocation`] /
+  [`AudioId`]) — the *Audio Definition Model* track-to-identifier table
+  that binds each physical `data`-chunk track to its `audioTrackUID`
+  (`ATU_…`), `audioTrackFormatID` (`AT_…`, or an `audioChannelFormat`
+  `AC_…` for bare linear PCM) and optional `audioPackFormatID` (`AP_…`).
+  The 4-byte `numTracks` / `numUIDs` preamble precedes an array of fixed
+  40-byte `audioID` records (`trackIndex` u16 LE + `UID[12]` +
+  `trackRef[14]` + `packRef[11]` + `pad`), with the record count derived
+  from the body length (`N = (ckSize − 4) / 40`) and a multiple-of-40
+  cross-check. The `N ≥ numUIDs` over-provisioning convention is honoured:
+  spare zeroed records (`trackIndex == 0`) are retained but skipped by
+  `active()` / `by_track_index()`, and `uid_count_consistent()` reports
+  whether the used-record count matches the declared `numUIDs`. The
+  fixed-width identifier fields are kept as raw byte arrays (non-NUL-
+  terminated ASCII per spec) with `uid_str` / `track_ref_str` /
+  `pack_ref_str` trimmed-UTF-8 accessors. The ADM XML resolution of the
+  ID references (into `axml` / `bxml` / `sxml`, or BS.2094 common
+  definitions) is the caller's concern, outside the binary chunk.
 
 ## Standalone build
 
@@ -160,6 +179,11 @@ while let Some(chunk) = walker.read_next().unwrap() {
   `…/ebu-tech3306-v2.pdf` §1 — EBU Tech 3306 (MBWF / RF64), the source
   for the `ds64` data-size-64 decoder and the `RF64` / `BW64` outer
   wrappers.
+- `docs/container/riff/metadata/R-REC-BS.2088.pdf` §8 +
+  `…/bs2088-chna-chunk-layout.md` — ITU-R BS.2088-2 (the BW64 file
+  format), the binary `chna` `struct chna_chunk` / `struct audioID`
+  layout that BS.2076 (ADM) and EBU Tech 3285s5 reference but defer; the
+  source for the `chna` channel-allocation decoder.
 - `docs/container/riff/metadata/README.md` — staged catalogue of the
   WAV metadata-bearing chunks for later work.
 
