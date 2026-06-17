@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 328 — `acid` (Acidizer) loop-metadata decoder.** A typed
+  reader for the Sonic Foundry / Sony ACID `acid` chunk, the loop
+  metadata "ACIDized" WAV files carry so a host can pitch- and
+  time-stretch a loop to the project tempo. `Acid::parse` decodes the
+  fixed 24-byte body: the `flags` property bitfield, the MIDI `rootNote`,
+  two observed-constant `unknown` fields, `numBeats`, the
+  meter denominator/numerator, and the IEEE-754 single-precision `tempo`
+  (BPM). The `flags` bits are exposed through `is_one_shot` / `is_loop`
+  (bit 0 type discriminator), `root_note_set` (bit 1, which gates the
+  `root_note()` accessor), `stretch_enabled` (bit 2), `disk_based`
+  (bit 3) and `high_octave` (bit 4) accessors plus the matching
+  `FLAG_*` masks. The body length is required to be exactly 24 bytes —
+  this is a fixed-width vendor record with no documented extension
+  mechanism, so an off-length body is rejected rather than treated as a
+  future field. The two `unknown` fields are kept verbatim so an
+  atypical writer's values round-trip. Adds the `FOURCC_ACID` /
+  `ACID_LEN` constants and the `Acid` type to the public surface.
+  Sourced from the clean-room field spec `docs/container/riff/acid-chunk.md`.
+
 - **Round 323 — BW64 `chna` ADM channel-allocation decoder.** A typed
   reader for the *Audio Definition Model* `chna` chunk, sourced from
   ITU-R BS.2088-2 §8 (the BW64 file format, the binary `struct

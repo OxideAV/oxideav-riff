@@ -50,7 +50,13 @@
 //! the `numTracks` / `numUIDs` preamble plus the array of fixed 40-byte
 //! `audioID` records (`trackIndex` + `UID` / `trackRef` / `packRef`
 //! ADM identifier references), honouring the `N >= numUIDs`
-//! over-provisioning convention by skipping zero-`trackIndex` slots.
+//! over-provisioning convention by skipping zero-`trackIndex` slots;
+//! round 328 adds the `acid` (Acidizer) loop-metadata decoder
+//! ([`acid::Acid`]) that parses the fixed 24-byte Sonic Foundry / Sony
+//! ACID record — the `flags` property bitfield (one-shot/loop,
+//! root-note-set, stretch, disk-based, high-octave), the MIDI `rootNote`,
+//! `numBeats`, the time signature, and the IEEE-754 `tempo` (BPM) —
+//! preserving the two observed-constant `unknown` fields verbatim.
 //!
 //! ## Wire format (§1.3 of the 1991 spec)
 //!
@@ -130,6 +136,7 @@
 
 #![doc(html_root_url = "https://docs.rs/oxideav-riff/0.0.1")]
 
+pub mod acid;
 pub mod adtl;
 pub mod bext;
 pub mod chna;
@@ -145,6 +152,10 @@ pub mod subtype;
 pub mod walk;
 pub mod waveformat;
 
+pub use acid::{
+    Acid, ACID_LEN, FLAG_DISK_BASED, FLAG_HIGH_OCTAVE, FLAG_ONE_SHOT, FLAG_ROOT_NOTE_SET,
+    FLAG_STRETCH, FOURCC_ACID,
+};
 pub use adtl::{
     AdtlEntry, AdtlList, EmbeddedFile, LabeledText, FILE_PREFIX_LEN, FOURCC_ADTL, FOURCC_FILE,
     FOURCC_LABL, FOURCC_LTXT, FOURCC_NOTE, LTXT_PREFIX_LEN,

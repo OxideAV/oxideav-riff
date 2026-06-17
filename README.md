@@ -17,8 +17,9 @@ The walker is codec-agnostic; the typed decoders stack on top of it.
 Codec-specific chunk bodies not yet covered (`data` / `iXML` / `smpl` /
 `inst` / `axml` / `id3 `) are deferred to later work; the
 `RF64` / `BW64` 64-bit-extended outer wrappers are now handled via the
-`ds64` decoder (EBU Tech 3306), and the ADM `chna` channel-allocation
-table via the `chna` decoder (ITU-R BS.2088).
+`ds64` decoder (EBU Tech 3306), the ADM `chna` channel-allocation
+table via the `chna` decoder (ITU-R BS.2088), and the Sonic Foundry /
+Sony ACID `acid` loop-metadata block via the `acid` decoder.
 
 ## The walker
 
@@ -128,6 +129,22 @@ The wire-format invariants enforced:
   `pack_ref_str` trimmed-UTF-8 accessors. The ADM XML resolution of the
   ID references (into `axml` / `bxml` / `sxml`, or BS.2094 common
   definitions) is the caller's concern, outside the binary chunk.
+- **`acid` Acidizer loop metadata** ([`Acid`]) — the Sonic Foundry /
+  Sony ACID loop-metadata block that "ACIDized" WAV loops carry so a host
+  can pitch- and time-stretch the loop to the project tempo. The fixed
+  24-byte body decodes the `flags` property bitfield (one-shot vs loop,
+  root-note-set, stretch, disk-based, high-octave), the MIDI `rootNote`
+  (gated by the root-note-set flag), `numBeats`, the meter
+  denominator/numerator, and the IEEE-754 single-precision `tempo` in BPM.
+  Because this is a fixed-width undocumented vendor record with no
+  extension mechanism, an off-length body is rejected rather than treated
+  as a future field; the two reverse-engineered `unknown` constants
+  (`0x8000` and `0.0` in known files) are retained verbatim so an
+  atypical writer's values round-trip. The layout is a community
+  reverse-engineering, not vendor-authoritative — the meter
+  numerator/denominator order and the bit-4 octave semantics are RE facts
+  cross-checked across two independent public sources, not a published
+  spec.
 
 ## Standalone build
 
@@ -184,6 +201,10 @@ while let Some(chunk) = walker.read_next().unwrap() {
   format), the binary `chna` `struct chna_chunk` / `struct audioID`
   layout that BS.2076 (ADM) and EBU Tech 3285s5 reference but defer; the
   source for the `chna` channel-allocation decoder.
+- `docs/container/riff/acid-chunk.md` — clean-room field spec for the
+  Sonic Foundry / Sony ACID `acid` chunk (the 24-byte Acidizer record:
+  per-offset field table, `flags` bit table, MIDI root-note mapping); the
+  source for the `acid` decoder.
 - `docs/container/riff/metadata/README.md` — staged catalogue of the
   WAV metadata-bearing chunks for later work.
 
