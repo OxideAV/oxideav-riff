@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 337 — `inst` instrument + `smpl` sampler decoders.** Two typed
+  readers for the WAV sampler-instrument chunk pair. `Inst::parse` decodes
+  the fixed 7-byte `inst` instrument record — `UnshiftedNote`, `FineTune`,
+  `Gain`, `LowNote`, `HighNote`, `LowVelocity`, `HighVelocity`, one byte
+  each — exposing the signed `fine_tune()` / `gain()` offsets (raw bytes
+  retained), the `note_range()` / `velocity_range()` key + velocity zones,
+  and `covers_note` / `covers_velocity` membership tests. `Smpl::parse`
+  decodes the `smpl` sampler chunk: the 36-byte fixed header
+  (`Manufacturer` / `Product` / `SamplePeriod` / `MIDIUnityNote` /
+  `MIDIPitchFraction` / `SMPTEFormat` / `SMPTEOffset` / `NumSampleLoops` /
+  `SamplerDataLen`), the `NumSampleLoops` table of 24-byte `<sample-loop>`
+  records, and the opaque `SamplerData` trailer; the body length must
+  agree with the declared loop count and sampler-data length (overflow-safe
+  size arithmetic rejects a corrupt count instead of panicking). Because
+  the per-loop field breakdown is not in the in-tree clean-room material,
+  each loop record is preserved verbatim as a 24-byte `SampleLoop`;
+  `smpte_offset_parts()` unpacks the packed `HH:MM:SS:FF` offset and
+  `smpte_none()` / `has_sampler_data()` are convenience predicates. Both
+  reject off-length / mismatched bodies rather than treating them as
+  future fields. Adds `Inst`, `FOURCC_INST`, `INST_LEN`, `Smpl`,
+  `SampleLoop`, `FOURCC_SMPL`, `SMPL_HEADER_LEN`, `SAMPLE_LOOP_LEN`, and
+  `SMPTE_FORMAT_NONE` to the public surface. Sourced from
+  `docs/container/riff/metadata/exiftool-riff-tags.html` (RIFF Instrument
+  Tags + RIFF Sampler Tags) and `docs/container/riff/metadata/README.md`
+  (the `inst` 7-byte / `smpl` 36-byte + N × 24 loop-record size summary).
+
 - **Round 333 — `CSET` character-set decoder + country / language /
   dialect code lookups.** A typed reader for the file-wide `CSET`
   (character set) chunk — the 8-byte body of four 16-bit fields

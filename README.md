@@ -14,12 +14,13 @@ parent chunk's children, FourCC helpers, and the crate's own `Error` /
 `Result` aliases — plus a growing set of typed chunk-body decoders.
 
 The walker is codec-agnostic; the typed decoders stack on top of it.
-Codec-specific chunk bodies not yet covered (`data` / `iXML` / `smpl` /
-`inst` / `axml` / `id3 `) are deferred to later work; the
-`RF64` / `BW64` 64-bit-extended outer wrappers are now handled via the
-`ds64` decoder (EBU Tech 3306), the ADM `chna` channel-allocation
-table via the `chna` decoder (ITU-R BS.2088), and the Sonic Foundry /
-Sony ACID `acid` loop-metadata block via the `acid` decoder.
+Codec-specific chunk bodies not yet covered (`data` / `iXML` / `axml` /
+`id3 `) are deferred to later work; the `RF64` / `BW64` 64-bit-extended
+outer wrappers are now handled via the `ds64` decoder (EBU Tech 3306),
+the ADM `chna` channel-allocation table via the `chna` decoder (ITU-R
+BS.2088), the Sonic Foundry / Sony ACID `acid` loop-metadata block via
+the `acid` decoder, and the sampler-instrument pair (`smpl` / `inst`) via
+the `smpl` / `inst` decoders.
 
 ## The walker
 
@@ -162,6 +163,25 @@ The wire-format invariants enforced:
   `LIST adtl` `ltxt` record's `wCountry` / `wLanguage` / `wDialect` raw
   codes — previously recorded as opaque `u16` — via the new
   `LabeledText::country_name` / `language_name` accessors.
+- **`inst` instrument** ([`Inst`]) — the fixed 7-byte MIDI playback-hint
+  record a sampler uses to map a single WAV sample across a keyboard:
+  `UnshiftedNote` (the key the sample plays unshifted), signed `FineTune`
+  (cents) and `Gain` (dB) offsets, and the inclusive key
+  (`LowNote`..=`HighNote`) and velocity (`LowVelocity`..=`HighVelocity`)
+  zones the sample covers. The signed offsets keep their raw byte too;
+  `covers_note` / `covers_velocity` test a MIDI note / velocity against
+  the zones. An off-length body is rejected (fixed-width record).
+- **`smpl` sampler** ([`Smpl`] / [`SampleLoop`]) — the richer sampler
+  detail: the 36-byte fixed header (`Manufacturer` / `Product` /
+  `SamplePeriod` / `MIDIUnityNote` + `MIDIPitchFraction` / `SMPTEFormat`
+  + `SMPTEOffset` / `NumSampleLoops` / `SamplerDataLen`), the
+  `NumSampleLoops` table of 24-byte `<sample-loop>` records, and the
+  opaque `SamplerData` trailer. The body length must agree with the
+  declared loop count and sampler-data length, with overflow-safe size
+  arithmetic. The per-loop field breakdown is not in the in-tree
+  clean-room material, so each loop record is preserved verbatim as a
+  24-byte `SampleLoop`; `smpte_offset_parts` unpacks the packed
+  `HH:MM:SS:FF` offset.
 
 ## Standalone build
 
@@ -224,6 +244,12 @@ while let Some(chunk) = walker.read_next().unwrap() {
   Sonic Foundry / Sony ACID `acid` chunk (the 24-byte Acidizer record:
   per-offset field table, `flags` bit table, MIDI root-note mapping); the
   source for the `acid` decoder.
+- `docs/container/riff/metadata/exiftool-riff-tags.html` — the *RIFF
+  Instrument Tags* and *RIFF Sampler Tags* tables (the `'inst'` 7-field
+  1-byte layout and the `'smpl'` nine 4-byte fields + `NumSampleLoops` +
+  `SamplerDataLen` + `SamplerData`), plus the metadata README's
+  `inst` 7-byte / `smpl` 36-byte + N × 24 size summary; the source for the
+  `inst` / `smpl` decoders.
 - `docs/container/riff/metadata/README.md` — staged catalogue of the
   WAV metadata-bearing chunks for later work.
 

@@ -61,7 +61,15 @@
 //! and the typed country / language / dialect code lookups
 //! ([`cset::country_name`] / [`cset::language_name`]) the §2 numeric-code
 //! tables register, wiring them into the `LIST adtl` `ltxt` record so its
-//! `wCountry` / `wLanguage` / `wDialect` raw codes resolve to names.
+//! `wCountry` / `wLanguage` / `wDialect` raw codes resolve to names;
+//! round 337 adds the sampler-instrument pair — the `inst` instrument
+//! decoder ([`inst::Inst`]) for the fixed 7-byte MIDI playback-hint record
+//! (unshifted note, signed fine-tune / gain, key + velocity zones) and the
+//! `smpl` sampler decoder ([`smpl::Smpl`]) for the 36-byte fixed header
+//! (manufacturer / product / sample period / MIDI unity note + pitch
+//! fraction / SMPTE format + offset) plus the `NumSampleLoops` table of
+//! 24-byte loop records (preserved verbatim) and the opaque
+//! `SamplerData` trailer.
 //!
 //! ## Wire format (§1.3 of the 1991 spec)
 //!
@@ -153,7 +161,9 @@ pub mod error;
 pub mod fact;
 pub mod fourcc;
 pub mod info;
+pub mod inst;
 pub mod plst;
+pub mod smpl;
 pub mod subtype;
 pub mod walk;
 pub mod waveformat;
@@ -190,7 +200,11 @@ pub use error::{Error, Result};
 pub use fact::{Fact, FACT_MIN_LEN, FOURCC_FACT};
 pub use fourcc::{fourcc_bytes, fourcc_to_string, is_printable_fourcc};
 pub use info::{zstr_bytes, zstr_value, InfoList, InfoTag};
+pub use inst::{Inst, FOURCC_INST, INST_LEN};
 pub use plst::{PlaySegment, Playlist, FOURCC_PLST, PLAY_SEGMENT_LEN};
+pub use smpl::{
+    SampleLoop, Smpl, FOURCC_SMPL, SAMPLE_LOOP_LEN, SMPL_HEADER_LEN, SMPTE_FORMAT_NONE,
+};
 pub use subtype::{
     iec61937_guid, iec61937_name, waveformatex_guid, waveformatex_name, KsSubtype, IEC61937_DATA2,
 };
