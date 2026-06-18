@@ -144,6 +144,20 @@ impl LabeledText {
             text: body[LTXT_PREFIX_LEN..].to_vec(),
         })
     }
+
+    /// The registered country name for this segment's `wCountry` code, or
+    /// `None` for the "ignore" code `0` / an unregistered code. See
+    /// [`crate::cset::country_name`].
+    pub fn country_name(&self) -> Option<&'static str> {
+        crate::cset::country_name(self.country)
+    }
+
+    /// The registered language name for this segment's (`wLanguage`,
+    /// `wDialect`) pair, or `None` for the "ignore" pair `(0, 0)` / an
+    /// unregistered pair. See [`crate::cset::language_name`].
+    pub fn language_name(&self) -> Option<&'static str> {
+        crate::cset::language_name(self.language, self.dialect)
+    }
 }
 
 /// A decoded `file` (embedded-media) record.
@@ -479,6 +493,28 @@ mod tests {
             }
             other => panic!("expected LabeledText, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn ltxt_resolves_country_and_language_names() {
+        // country 044 (UK), language 9 / dialect 2 = UK English.
+        let body = ltxt_body(7, 4410, b"scrp", [44, 9, 2, 1252], b"Hi");
+        let l = match AdtlEntry::parse(FOURCC_LTXT, &body).unwrap() {
+            AdtlEntry::LabeledText(l) => l,
+            other => panic!("expected LabeledText, got {other:?}"),
+        };
+        assert_eq!(l.country_name(), Some("United Kingdom"));
+        assert_eq!(l.language_name(), Some("UK English"));
+
+        // The "ignore" codes (0 / (0,0)) resolve to None on the raw
+        // accessors (no defaulting at the ltxt level).
+        let zero = ltxt_body(8, 0, b"\0\0\0\0", [0, 0, 0, 0], b"");
+        let z = match AdtlEntry::parse(FOURCC_LTXT, &zero).unwrap() {
+            AdtlEntry::LabeledText(l) => l,
+            other => panic!("expected LabeledText, got {other:?}"),
+        };
+        assert_eq!(z.country_name(), None);
+        assert_eq!(z.language_name(), None);
     }
 
     #[test]

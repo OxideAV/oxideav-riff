@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 333 — `CSET` character-set decoder + country / language /
+  dialect code lookups.** A typed reader for the file-wide `CSET`
+  (character set) chunk — the 8-byte body of four 16-bit fields
+  (`wCodePage` / `wCountryCode` / `wLanguageCode` / `wDialect`) — plus
+  the two numeric-code tables the spec's §2 registers: the 29-entry
+  *Country Codes* table (`001` USA … `358` Finland) via `country_name`,
+  and the 44-entry *Language and Dialect Codes* table via `language_name`,
+  keyed on the (`wLanguage`, `wDialect`) pair so one language code
+  resolves to its dialect-specific name (e.g. `12`/`1..4` French / Belgian
+  / Canadian / Swiss French; `4`/`1` Traditional vs `4`/`2` Simplified
+  Chinese). The spec's zero-field defaulting (country `0` → USA,
+  language/dialect `(0, 0)` → US English) is exposed via the
+  `country_name_defaulted` / `language_name_defaulted` free functions and
+  the `CharacterSet::country` / `language` accessors; `CharacterSet::parse`
+  rejects any body that is not exactly 8 bytes. These same codes appear in
+  the `LIST adtl` `ltxt` record, so `LabeledText` gains `country_name` /
+  `language_name` accessors that resolve its previously-raw `wCountry` /
+  `wLanguage` / `wDialect` `u16` values. Adds `CharacterSet`,
+  `FOURCC_CSET`, `CSET_LEN`, the `DEFAULT_COUNTRY` / `DEFAULT_LANGUAGE` /
+  `DEFAULT_DIALECT` constants, and the four name-lookup functions to the
+  public surface. Sourced from `docs/container/riff/metadata/microsoft-riffmci.pdf`
+  §2 (CSET chunk, Country Codes, Language and Dialect Codes).
 - **Round 328 — `acid` (Acidizer) loop-metadata decoder.** A typed
   reader for the Sonic Foundry / Sony ACID `acid` chunk, the loop
   metadata "ACIDized" WAV files carry so a host can pitch- and

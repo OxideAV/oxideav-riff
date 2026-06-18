@@ -90,8 +90,9 @@ The wire-format invariants enforced:
   chunks, collected in on-wire order with cue-point cross-reference
   lookups (`by_cue_name` / `label` / `note`) and verbatim preservation
   of unrecognised child FourCCs. The `ltxt` `wCountry` / `wLanguage` /
-  `wDialect` numeric-code tables are recorded as raw `u16` values; a
-  typed lookup for them is deferred.
+  `wDialect` numeric codes are kept as raw `u16` values and now also
+  resolve to names via `LabeledText::country_name` / `language_name`
+  (the §2 code tables — see the `CSET` decoder below).
 - **RF64 / BW64 `ds64` data-size-64** ([`DataSize64`] / [`ChunkSize64`])
   — the MBWF / RF64 64-bit size extension that lifts the format's 4 GiB
   cap. The 28-byte fixed prefix carries the three mandatory 64-bit
@@ -145,6 +146,22 @@ The wire-format invariants enforced:
   numerator/denominator order and the bit-4 octave semantics are RE facts
   cross-checked across two independent public sources, not a published
   spec.
+- **`CSET` character set + country / language / dialect codes**
+  ([`CharacterSet`] / [`country_name`] / [`language_name`]) — the
+  file-wide `CSET` chunk (`wCodePage` / `wCountryCode` / `wLanguageCode` /
+  `wDialect`, the 8-byte body), plus the two §2 numeric-code tables it
+  registers: the 29-entry **Country Codes** table (`001` USA … `358`
+  Finland) and the 44-entry **Language and Dialect Codes** table, the
+  latter keyed on the (`wLanguage`, `wDialect`) *pair* so a single
+  language code resolves to its dialect-specific name (`12`/`1` French,
+  `12`/`2` Belgian French, `12`/`3` Canadian French, `12`/`4` Swiss
+  French; `4`/`1` Traditional vs `4`/`2` Simplified Chinese). The spec's
+  zero-field defaulting is exposed via the `…_defaulted` variants and the
+  `CharacterSet::country` / `language` accessors (country `0` → USA,
+  language/dialect `(0, 0)` → US English). These resolve the
+  `LIST adtl` `ltxt` record's `wCountry` / `wLanguage` / `wDialect` raw
+  codes — previously recorded as opaque `u16` — via the new
+  `LabeledText::country_name` / `language_name` accessors.
 
 ## Standalone build
 
@@ -180,7 +197,9 @@ while let Some(chunk) = walker.read_next().unwrap() {
 ## Clean-room references
 
 - `docs/container/riff/metadata/microsoft-riffmci.pdf` §1–2 — the
-  canonical original RIFF + WAV + AVI spec (1991).
+  canonical original RIFF + WAV + AVI spec (1991); §2 also carries the
+  `CSET` chunk grammar plus the *Country Codes* and *Language and Dialect
+  Codes* tables consumed by the `cset` decoder.
 - `docs/container/riff/metadata/ms-xaudio2-riff.html` — modern
   reformulation of the RIFF wire layout.
 - `docs/container/riff/avi-riff-file-reference.md` — AVI RIFF File

@@ -56,7 +56,12 @@
 //! ACID record — the `flags` property bitfield (one-shot/loop,
 //! root-note-set, stretch, disk-based, high-octave), the MIDI `rootNote`,
 //! `numBeats`, the time signature, and the IEEE-754 `tempo` (BPM) —
-//! preserving the two observed-constant `unknown` fields verbatim.
+//! preserving the two observed-constant `unknown` fields verbatim;
+//! round 333 adds the `CSET` character-set decoder ([`cset::CharacterSet`])
+//! and the typed country / language / dialect code lookups
+//! ([`cset::country_name`] / [`cset::language_name`]) the §2 numeric-code
+//! tables register, wiring them into the `LIST adtl` `ltxt` record so its
+//! `wCountry` / `wLanguage` / `wDialect` raw codes resolve to names.
 //!
 //! ## Wire format (§1.3 of the 1991 spec)
 //!
@@ -141,6 +146,7 @@ pub mod adtl;
 pub mod bext;
 pub mod chna;
 pub mod chunk;
+pub mod cset;
 pub mod cue;
 pub mod ds64;
 pub mod error;
@@ -170,6 +176,10 @@ pub use chna::{
 };
 pub use chunk::{
     read_chunk_header, read_form_type, skip_chunk, skip_pad, ChunkHeader, FOURCC_LIST, FOURCC_RIFF,
+};
+pub use cset::{
+    country_name, country_name_defaulted, language_name, language_name_defaulted, CharacterSet,
+    CSET_LEN, DEFAULT_COUNTRY, DEFAULT_DIALECT, DEFAULT_LANGUAGE, FOURCC_CSET,
 };
 pub use cue::{CueChunk, CuePoint, CUE_POINT_LEN, FOURCC_CUE};
 pub use ds64::{
