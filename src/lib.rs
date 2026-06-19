@@ -69,7 +69,14 @@
 //! (manufacturer / product / sample period / MIDI unity note + pitch
 //! fraction / SMPTE format + offset) plus the `NumSampleLoops` table of
 //! 24-byte loop records (preserved verbatim) and the opaque
-//! `SamplerData` trailer.
+//! `SamplerData` trailer; round 340 adds the BW64 ADM XML-carrier
+//! decoders ([`sxml::AxmlChunk`] / [`sxml::BxmlChunk`] /
+//! [`sxml::SxmlChunk`], ITU-R BS.2088 §5-§7) — `axml` (uncompressed XML
+//! verbatim), `bxml` (a `fmtType` compression selector + verbatim
+//! payload), and the structured `sxml` (the `fmtType` + 64-bit
+//! `subXMLCkTbSize` prefix, the `SubXMLChunk` table binding XML spans to
+//! sample counts, and the optional sample-accurate `AlignmentPoint`
+//! seek table) with full table-bound cross-checks.
 //!
 //! ## Wire format (§1.3 of the 1991 spec)
 //!
@@ -165,6 +172,7 @@ pub mod inst;
 pub mod plst;
 pub mod smpl;
 pub mod subtype;
+pub mod sxml;
 pub mod walk;
 pub mod waveformat;
 
@@ -207,6 +215,11 @@ pub use smpl::{
 };
 pub use subtype::{
     iec61937_guid, iec61937_name, waveformatex_guid, waveformatex_name, KsSubtype, IEC61937_DATA2,
+};
+pub use sxml::{
+    AlignmentPoint, AxmlChunk, BxmlChunk, SubXmlChunk, SxmlChunk, ALIGNMENT_POINT_LEN,
+    FMT_TYPE_GZIP, FMT_TYPE_UNCOMPRESSED, FOURCC_AXML, FOURCC_BXML, FOURCC_SXML,
+    SUB_XML_HEADER_LEN,
 };
 pub use walk::{ChunkRef, Walker};
 pub use waveformat::{

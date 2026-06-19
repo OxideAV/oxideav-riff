@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 340 — BW64 ADM XML-carrier decoders (`axml` / `bxml` / `sxml`).**
+  Three typed readers for the *Audio Definition Model* metadata document
+  that a BW64 (ADM-carrying) WAV file pairs with the binary `chna` table,
+  per ITU-R BS.2088 §5-§7. `AxmlChunk::parse` keeps the uncompressed XML
+  body verbatim (`xml_str()` UTF-8 accessor). `BxmlChunk::parse` splits the
+  2-byte `fmtType` compression selector (`0x0000` uncompressed / `0x0001`
+  gzip) from the verbatim compressed payload (`is_gzip` / `is_uncompressed`;
+  a sub-2-byte body is rejected). `SxmlChunk::parse` walks the structured
+  carrier: the `fmtType` + 64-bit `subXMLCkTbSize` prefix, the `SubXMLChunk`
+  table binding each XML span to its `nSamplesSubDataChunk` audio-sample
+  count, and the optional sample-accurate `AlignmentPoint` seek table
+  (64-bit byte offset + timeline sample count). The table-size field
+  (counting its own `nSubXMLChunks` field) is range-checked against the
+  body, each `SubXMLChunk` record is checked against the declared table
+  region, and the trailing `nAlignmentPoints` count must consume exactly
+  the remaining body — so a truncated or over-long chunk is rejected with
+  `Error::invalid` rather than parsed past its bounds. Decompression /
+  XML interpretation stays the caller's concern, above the container
+  layer. `total_samples()` sums the sub-chunk spans. New public surface:
+  `AxmlChunk` / `BxmlChunk` / `SxmlChunk` / `SubXmlChunk` / `AlignmentPoint`
+  plus `FOURCC_AXML` / `FOURCC_BXML` / `FOURCC_SXML` / `FMT_TYPE_*` /
+  `SUB_XML_HEADER_LEN` / `ALIGNMENT_POINT_LEN`. 13 new tests.
+
 - **Round 337 — `inst` instrument + `smpl` sampler decoders.** Two typed
   readers for the WAV sampler-instrument chunk pair. `Inst::parse` decodes
   the fixed 7-byte `inst` instrument record — `UnshiftedNote`, `FineTune`,

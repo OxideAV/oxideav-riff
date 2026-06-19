@@ -14,13 +14,15 @@ parent chunk's children, FourCC helpers, and the crate's own `Error` /
 `Result` aliases — plus a growing set of typed chunk-body decoders.
 
 The walker is codec-agnostic; the typed decoders stack on top of it.
-Codec-specific chunk bodies not yet covered (`data` / `iXML` / `axml` /
-`id3 `) are deferred to later work; the `RF64` / `BW64` 64-bit-extended
-outer wrappers are now handled via the `ds64` decoder (EBU Tech 3306),
-the ADM `chna` channel-allocation table via the `chna` decoder (ITU-R
-BS.2088), the Sonic Foundry / Sony ACID `acid` loop-metadata block via
-the `acid` decoder, and the sampler-instrument pair (`smpl` / `inst`) via
-the `smpl` / `inst` decoders.
+Codec-specific chunk bodies not yet covered (`data` / `iXML` / `id3 `)
+are deferred to later work; the `RF64` / `BW64` 64-bit-extended outer
+wrappers are now handled via the `ds64` decoder (EBU Tech 3306), the ADM
+`chna` channel-allocation table via the `chna` decoder (ITU-R BS.2088),
+the ADM XML-carrier chunks (`axml` / `bxml` / `sxml`) via the
+`axml`/`bxml`/`sxml` decoders (ITU-R BS.2088 §5-§7), the Sonic Foundry /
+Sony ACID `acid` loop-metadata block via the `acid` decoder, and the
+sampler-instrument pair (`smpl` / `inst`) via the `smpl` / `inst`
+decoders.
 
 ## The walker
 
@@ -171,6 +173,20 @@ The wire-format invariants enforced:
   zones the sample covers. The signed offsets keep their raw byte too;
   `covers_note` / `covers_velocity` test a MIDI note / velocity against
   the zones. An off-length body is rejected (fixed-width record).
+- **BW64 ADM XML carriers** ([`AxmlChunk`] / [`BxmlChunk`] / [`SxmlChunk`])
+  — the three chunks that carry the *Audio Definition Model* metadata
+  document a BW64 file pairs with the binary `chna` table, per ITU-R
+  BS.2088 §5-§7. `axml` keeps the uncompressed XML verbatim; `bxml` splits
+  its 2-byte `fmtType` compression selector (`0x0000` uncompressed /
+  `0x0001` gzip) from the verbatim compressed payload; `sxml` walks the
+  structured carrier — the `fmtType` + 64-bit `subXMLCkTbSize` prefix, the
+  [`SubXmlChunk`] table binding each XML span to its `nSamplesSubDataChunk`
+  audio-sample count, and the optional sample-accurate [`AlignmentPoint`]
+  seek table (64-bit byte offset + timeline sample count). The table-size
+  field, each sub-chunk record, and the trailing alignment-point count are
+  all range-checked against the body, so a truncated or over-long chunk is
+  rejected rather than parsed past its bounds. Decompression and XML
+  interpretation stay the caller's concern, above the container layer.
 - **`smpl` sampler** ([`Smpl`] / [`SampleLoop`]) — the richer sampler
   detail: the 36-byte fixed header (`Manufacturer` / `Product` /
   `SamplePeriod` / `MIDIUnityNote` + `MIDIPitchFraction` / `SMPTEFormat`
@@ -239,7 +255,11 @@ while let Some(chunk) = walker.read_next().unwrap() {
   `…/bs2088-chna-chunk-layout.md` — ITU-R BS.2088-2 (the BW64 file
   format), the binary `chna` `struct chna_chunk` / `struct audioID`
   layout that BS.2076 (ADM) and EBU Tech 3285s5 reference but defer; the
-  source for the `chna` channel-allocation decoder.
+  source for the `chna` channel-allocation decoder. §5-§7 of the same PDF
+  carry the `struct axml_chunk` / `bxml_chunk` / `sxml_chunk` layouts (the
+  ADM XML-carrier chunks, the `SubXMLChunk` / `AlignmentPoint` records, and
+  the `subXMLCkTbSize` 64-bit table-size field) — the source for the
+  `axml` / `bxml` / `sxml` decoders.
 - `docs/container/riff/acid-chunk.md` — clean-room field spec for the
   Sonic Foundry / Sony ACID `acid` chunk (the 24-byte Acidizer record:
   per-offset field table, `flags` bit table, MIDI root-note mapping); the
