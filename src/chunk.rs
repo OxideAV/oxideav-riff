@@ -110,6 +110,44 @@ pub fn read_form_type<R: Read + ?Sized>(r: &mut R) -> Result<[u8; 4]> {
     Ok(b)
 }
 
+/// Append an 8-byte chunk header to `out`: the 4-byte FourCC followed by
+/// the little-endian `ckSize` (§1.3).
+///
+/// This is the write-side mirror of [`read_chunk_header`]: it emits the
+/// header exactly as that function decodes it, so a header round-trips
+/// `id` and `size` byte-for-byte. It does **not** emit the body or the
+/// pad byte — see [`encode_chunk`] for the full leaf-chunk emitter.
+pub fn write_chunk_header(out: &mut Vec<u8>, id: &[u8; 4], size: u32) {
+    out.extend_from_slice(id);
+    out.extend_from_slice(&size.to_le_bytes());
+}
+
+/// Append a complete leaf chunk — 8-byte header (`id` + `body.len()` as
+/// the little-endian `ckSize`) followed by `body` and, when `body.len()`
+/// is odd, the trailing `0x00` pad byte (§1.3) — to `out`.
+///
+/// This is the write-side mirror of the walker's read-one-chunk step:
+/// the bytes it appends are exactly what [`read_chunk_header`] +
+/// [`crate::walk::Walker::read_body`] would consume for the same chunk.
+/// `ckSize` records the *un-padded* body length, matching the read side;
+/// the pad byte keeps the next sibling header on a 2-byte boundary but is
+/// not counted in `ckSize`.
+///
+/// Returns `Err(Error::invalid)` if `body` is longer than [`u32::MAX`]
+/// (the on-wire `ckSize` field is a 32-bit value; an RF64 / BW64 file
+/// defers such oversized chunks to the `ds64` table with a sentinel
+/// header instead, see [`crate::ds64`]).
+pub fn encode_chunk(out: &mut Vec<u8>, id: &[u8; 4], body: &[u8]) -> Result<()> {
+    let size = u32::try_from(body.len())
+        .map_err(|_| Error::invalid("RIFF: chunk body exceeds 32-bit ckSize range"))?;
+    write_chunk_header(out, id, size);
+    out.extend_from_slice(body);
+    if size & 1 == 1 {
+        out.push(0);
+    }
+    Ok(())
+}
+
 /// Skip past a chunk's body and any trailing pad byte.
 ///
 /// Uses [`Seek::seek`] on the underlying reader; consumers operating
@@ -263,5 +301,50 @@ mod tests {
         assert_eq!(cur.position(), 0);
         skip_pad(&mut cur, 5).unwrap();
         assert_eq!(cur.position(), 1);
+    }
+
+    #[test]
+    fn write_chunk_header_is_read_inverse() {
+        let mut out = Vec::new();
+        write_chunk_header(&mut out, b"data", 0x10);
+        assert_eq!(out, vec![b'd', b'a', b't', b'a', 0x10, 0x00, 0x00, 0x00]);
+        let mut cur = Cursor::new(&out[..]);
+        let h = read_chunk_header(&mut cur).unwrap().unwrap();
+        assert_eq!(&h.id, b"data");
+        assert_eq!(h.size, 0x10);
+    }
+
+    #[test]
+    fn encode_chunk_even_body_no_pad() {
+        let mut out = Vec::new();
+        encode_chunk(&mut out, b"fmt ", &[0x01, 0x00, 0x02, 0x00]).unwrap();
+        assert_eq!(
+            out,
+            vec![b'f', b'm', b't', b' ', 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x02, 0x00]
+        );
+        // No pad byte for an even-length body.
+        assert_eq!(out.len(), 8 + 4);
+    }
+
+    #[test]
+    fn encode_chunk_odd_body_adds_pad() {
+        let mut out = Vec::new();
+        encode_chunk(&mut out, b"data", &[0x10, 0x20, 0x30, 0x40, 0x50]).unwrap();
+        // ckSize records the un-padded length (5), the body is 5 bytes,
+        // and a single 0x00 pad byte follows.
+        assert_eq!(out.len(), 8 + 5 + 1);
+        assert_eq!(out[4..8], 5u32.to_le_bytes());
+        assert_eq!(*out.last().unwrap(), 0x00);
+    }
+
+    #[test]
+    fn encode_chunk_round_trips_through_header_read() {
+        let mut out = Vec::new();
+        encode_chunk(&mut out, b"junk", &[0xAA, 0xBB, 0xCC]).unwrap();
+        let mut cur = Cursor::new(&out[..]);
+        let h = read_chunk_header(&mut cur).unwrap().unwrap();
+        assert_eq!(&h.id, b"junk");
+        assert_eq!(h.size, 3);
+        assert_eq!(h.padded_size(), 4);
     }
 }

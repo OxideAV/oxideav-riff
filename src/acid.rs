@@ -194,6 +194,27 @@ impl Acid {
             None
         }
     }
+
+    /// Serialize this `acid` chunk *body* — the fixed [`ACID_LEN`] (24)
+    /// bytes a walker would hand to [`Acid::parse`], every field
+    /// little-endian in the per-offset order of the field spec.
+    ///
+    /// The two observed-constant `unknown*` fields re-emit from their
+    /// retained values rather than a hard-coded `0x8000` / `0.0`, so an
+    /// atypical writer's record round-trips through [`Acid::parse`]
+    /// byte-for-byte.
+    pub fn encode_body(&self) -> [u8; ACID_LEN] {
+        let mut b = [0u8; ACID_LEN];
+        b[0..4].copy_from_slice(&self.flags.to_le_bytes());
+        b[4..6].copy_from_slice(&self.root_note.to_le_bytes());
+        b[6..8].copy_from_slice(&self.unknown1.to_le_bytes());
+        b[8..12].copy_from_slice(&self.unknown2.to_le_bytes());
+        b[12..16].copy_from_slice(&self.num_beats.to_le_bytes());
+        b[16..18].copy_from_slice(&self.meter_denominator.to_le_bytes());
+        b[18..20].copy_from_slice(&self.meter_numerator.to_le_bytes());
+        b[20..24].copy_from_slice(&self.tempo.to_le_bytes());
+        b
+    }
 }
 
 #[cfg(test)]
@@ -339,5 +360,39 @@ mod tests {
         assert!(!acid.root_note_set());
         assert_eq!(acid.root_note(), None);
         assert_eq!(acid.tempo, 0.0);
+    }
+
+    #[test]
+    fn encode_body_round_trips() {
+        let b = body(
+            FLAG_ROOT_NOTE_SET | FLAG_STRETCH,
+            0x3C,
+            0x8000,
+            0.0,
+            8,
+            4,
+            4,
+            138.0,
+        );
+        let acid = Acid::parse(&b).unwrap();
+        let encoded = acid.encode_body();
+        assert_eq!(&encoded[..], &b[..]);
+        assert_eq!(Acid::parse(&encoded).unwrap(), acid);
+    }
+
+    #[test]
+    fn encode_body_preserves_atypical_unknowns() {
+        let b = body(0, 0, 0x1234, 1.5, 0, 4, 4, 100.0);
+        let acid = Acid::parse(&b).unwrap();
+        let encoded = acid.encode_body();
+        assert_eq!(&encoded[..], &b[..]);
+        let reparsed = Acid::parse(&encoded).unwrap();
+        assert_eq!(reparsed.unknown1, 0x1234);
+        assert_eq!(reparsed.unknown2, 1.5);
+    }
+
+    #[test]
+    fn encode_body_is_twenty_four_bytes() {
+        assert_eq!(Acid::default().encode_body().len(), ACID_LEN);
     }
 }

@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 351 — chunk-encode (mux) path: shared header writer + fixed-width
+  body encoders.** The crate's first write-side surface, the byte-exact
+  inverse of the existing parsers, so a parsed chunk re-encodes to the same
+  bytes a walker would consume. `chunk::write_chunk_header` emits the 8-byte
+  FourCC + little-endian `ckSize` header; `chunk::encode_chunk` emits a
+  complete leaf chunk (header + body + the `0x00` pad byte for an odd-length
+  body, with `ckSize` recording the un-padded length, §1.3) and rejects a
+  body beyond the 32-bit `ckSize` range. Body encoders landed for the
+  fixed-width chunks: `Fact::encode_body` (the `dwSampleLength` DWORD +
+  retained reserved trailer, sentinel-preserving), `Inst::encode_body` (the
+  7 one-byte fields), `Acid::encode_body` (the 24-byte Acidizer record, the
+  observed-constant `unknown*` fields re-emitted from their retained values),
+  `CharacterSet::encode_body` (the four `CSET` `WORD` fields), and the RF64 /
+  BW64 `DataSize64::encode_body` (the 28-byte prefix + `<chunkSize64>` table,
+  `tableLength` always agreeing with the record count) plus
+  `ChunkSize64::encode` and the `DataSize64::new` / `with_override` builder
+  so a writer can construct a `ds64` from scratch. New public surface:
+  `write_chunk_header` / `encode_chunk`; per-chunk `encode_body` /
+  `encode` / `new` / `with_override`. 24 new round-trip tests.
+
 - **Round 340 — BW64 ADM XML-carrier decoders (`axml` / `bxml` / `sxml`).**
   Three typed readers for the *Audio Definition Model* metadata document
   that a BW64 (ADM-carrying) WAV file pairs with the binary `chna` table,

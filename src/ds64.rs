@@ -124,6 +124,18 @@ impl ChunkSize64 {
             size: (high << 32) | low,
         })
     }
+
+    /// Serialize this entry as a [`CHUNK_SIZE64_LEN`]-byte `<chunkSize64>`
+    /// record — the FourCC followed by the 64-bit size split into its
+    /// little-endian low/high halves. Exact inverse of
+    /// [`ChunkSize64::parse`].
+    pub fn encode(&self) -> [u8; CHUNK_SIZE64_LEN] {
+        let mut b = [0u8; CHUNK_SIZE64_LEN];
+        b[0..4].copy_from_slice(&self.chunk_id);
+        b[4..8].copy_from_slice(&((self.size & 0xFFFF_FFFF) as u32).to_le_bytes());
+        b[8..12].copy_from_slice(&((self.size >> 32) as u32).to_le_bytes());
+        b
+    }
 }
 
 /// A decoded `ds64` chunk: the three mandatory 64-bit values plus the
@@ -199,6 +211,29 @@ impl DataSize64 {
         })
     }
 
+    /// Build a `ds64` from the three mandatory 64-bit values and a
+    /// size-override table.
+    ///
+    /// The write-side counterpart of [`DataSize64::parse`]: callers
+    /// constructing an RF64 / BW64 file populate the mandatory
+    /// `riffSize` / `dataSize` / `sampleCount` plus any per-chunk
+    /// overrides, then emit the body with [`DataSize64::encode_body`].
+    pub fn new(riff_size: u64, data_size: u64, sample_count: u64, table: Vec<ChunkSize64>) -> Self {
+        DataSize64 {
+            riff_size,
+            data_size,
+            sample_count,
+            table,
+        }
+    }
+
+    /// Append a `<chunkSize64>` size override for an oversized non-`data`
+    /// chunk to the table, returning `self` for chaining.
+    pub fn with_override(mut self, chunk_id: [u8; 4], size: u64) -> Self {
+        self.table.push(ChunkSize64 { chunk_id, size });
+        self
+    }
+
     /// The size-override table entries in on-wire order.
     pub fn table(&self) -> &[ChunkSize64] {
         &self.table
@@ -231,6 +266,27 @@ impl DataSize64 {
         } else {
             Some(u64::from(ck_size))
         }
+    }
+
+    /// Serialize this `ds64` chunk *body* — the [`DS64_PREFIX_LEN`]-byte
+    /// fixed prefix (the three mandatory 64-bit values, each split into
+    /// little-endian low/high halves, plus the 32-bit `tableLength`)
+    /// followed by the size-override table records.
+    ///
+    /// Exact inverse of [`DataSize64::parse`]: a parsed `ds64`
+    /// re-encodes to the same body bytes, and the emitted `tableLength`
+    /// always agrees with the record count it precedes.
+    pub fn encode_body(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(DS64_PREFIX_LEN + self.table.len() * CHUNK_SIZE64_LEN);
+        for value in [self.riff_size, self.data_size, self.sample_count] {
+            out.extend_from_slice(&((value & 0xFFFF_FFFF) as u32).to_le_bytes());
+            out.extend_from_slice(&((value >> 32) as u32).to_le_bytes());
+        }
+        out.extend_from_slice(&(self.table.len() as u32).to_le_bytes());
+        for entry in &self.table {
+            out.extend_from_slice(&entry.encode());
+        }
+        out
     }
 }
 
@@ -379,5 +435,58 @@ mod tests {
         let ds = DataSize64::parse(&body).unwrap();
         assert_eq!(ds.table()[0].chunk_id, [0, 1, 2, 3]);
         assert_eq!(ds.size_for(&[0, 1, 2, 3]), Some(42));
+    }
+
+    #[test]
+    fn record_encode_is_parse_inverse() {
+        let big = 600_000_000_000u64;
+        let r = ChunkSize64::parse(&rec(b"levl", big)).unwrap();
+        let encoded = r.encode();
+        assert_eq!(&encoded[..], &rec(b"levl", big)[..]);
+        assert_eq!(ChunkSize64::parse(&encoded).unwrap(), r);
+    }
+
+    #[test]
+    fn encode_body_no_table_round_trips() {
+        let data = 5_368_709_120u64;
+        let riff = data + 1024;
+        let samples = data / 4;
+        let body = ds64_body(riff, data, samples, &[]);
+        let ds = DataSize64::parse(&body).unwrap();
+        let encoded = ds.encode_body();
+        assert_eq!(encoded, body);
+        assert_eq!(DataSize64::parse(&encoded).unwrap(), ds);
+    }
+
+    #[test]
+    fn encode_body_with_table_round_trips() {
+        let body = ds64_body(
+            700_000_000_000,
+            500_000_000_000,
+            120_000_000_000,
+            &[rec(b"levl", 600_000_000_000), rec(b"junk", 9_000_000_000)],
+        );
+        let ds = DataSize64::parse(&body).unwrap();
+        let encoded = ds.encode_body();
+        assert_eq!(encoded, body);
+        assert_eq!(DataSize64::parse(&encoded).unwrap(), ds);
+    }
+
+    #[test]
+    fn builder_encode_parse_round_trip() {
+        let ds = DataSize64::new(
+            700_000_000_000,
+            500_000_000_000,
+            120_000_000_000,
+            Vec::new(),
+        )
+        .with_override(*b"levl", 600_000_000_000)
+        .with_override(*b"junk", 9_000_000_000);
+        let encoded = ds.encode_body();
+        let reparsed = DataSize64::parse(&encoded).unwrap();
+        assert_eq!(reparsed, ds);
+        assert_eq!(reparsed.size_for(b"levl"), Some(600_000_000_000));
+        // tableLength written into the prefix matches the record count.
+        assert_eq!(encoded[24..28], 2u32.to_le_bytes());
     }
 }

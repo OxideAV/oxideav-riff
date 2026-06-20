@@ -228,6 +228,20 @@ impl CharacterSet {
     pub fn is_default_code_page(&self) -> bool {
         self.code_page == 0
     }
+
+    /// Serialize this `CSET` chunk *body* — the fixed [`CSET_LEN`] (8)
+    /// bytes a walker would hand to [`CharacterSet::parse`]: the four
+    /// little-endian `WORD` fields in `wCodePage` / `wCountryCode` /
+    /// `wLanguageCode` / `wDialect` order. Exact inverse of
+    /// [`CharacterSet::parse`].
+    pub fn encode_body(&self) -> [u8; CSET_LEN] {
+        let mut b = [0u8; CSET_LEN];
+        b[0..2].copy_from_slice(&self.code_page.to_le_bytes());
+        b[2..4].copy_from_slice(&self.country_code.to_le_bytes());
+        b[4..6].copy_from_slice(&self.language_code.to_le_bytes());
+        b[6..8].copy_from_slice(&self.dialect.to_le_bytes());
+        b
+    }
 }
 
 #[cfg(test)]
@@ -325,5 +339,29 @@ mod tests {
         // A non-zero language with an unregistered dialect is NOT
         // defaulted — only the all-zero "ignore" pair is.
         assert_eq!(language_name_defaulted(9, 99), None);
+    }
+
+    #[test]
+    fn encode_body_round_trips() {
+        let cs = CharacterSet {
+            code_page: 1252,
+            country_code: 44,
+            language_code: 9,
+            dialect: 2,
+        };
+        let encoded = cs.encode_body();
+        assert_eq!(encoded.len(), CSET_LEN);
+        assert_eq!(CharacterSet::parse(&encoded).unwrap(), cs);
+    }
+
+    #[test]
+    fn encode_body_matches_hand_built() {
+        let mut hand = Vec::new();
+        hand.extend_from_slice(&1252u16.to_le_bytes());
+        hand.extend_from_slice(&44u16.to_le_bytes());
+        hand.extend_from_slice(&9u16.to_le_bytes());
+        hand.extend_from_slice(&2u16.to_le_bytes());
+        let cs = CharacterSet::parse(&hand).unwrap();
+        assert_eq!(&cs.encode_body()[..], &hand[..]);
     }
 }

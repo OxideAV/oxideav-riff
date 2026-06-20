@@ -128,6 +128,21 @@ impl Fact {
     pub fn has_extra(&self) -> bool {
         !self.extra.is_empty()
     }
+
+    /// Serialize this `fact` chunk *body* (the bytes a walker would hand
+    /// to [`Fact::parse`], without the 8-byte chunk header or pad byte).
+    ///
+    /// Emits the little-endian `dwSampleLength` DWORD followed by any
+    /// retained [`Fact::extra`] reserved fields verbatim. This is the
+    /// exact inverse of [`Fact::parse`]: a parsed `fact` re-encodes to
+    /// the same body bytes, including a deferral sentinel and any
+    /// future-format trailer.
+    pub fn encode_body(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(FACT_MIN_LEN + self.extra.len());
+        out.extend_from_slice(&self.sample_length.to_le_bytes());
+        out.extend_from_slice(&self.extra);
+        out
+    }
 }
 
 #[cfg(test)]
@@ -201,5 +216,31 @@ mod tests {
         assert_eq!(fact.sample_length, 0);
         assert!(fact.extra.is_empty());
         assert!(!fact.is_deferred());
+    }
+
+    #[test]
+    fn encode_body_classic_round_trips() {
+        let fact = Fact::parse(&body(44_100)).unwrap();
+        let encoded = fact.encode_body();
+        assert_eq!(encoded, body(44_100));
+        assert_eq!(Fact::parse(&encoded).unwrap(), fact);
+    }
+
+    #[test]
+    fn encode_body_preserves_extra() {
+        let mut b = body(1_000);
+        b.extend_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]);
+        let fact = Fact::parse(&b).unwrap();
+        let encoded = fact.encode_body();
+        assert_eq!(encoded, b);
+        assert_eq!(Fact::parse(&encoded).unwrap(), fact);
+    }
+
+    #[test]
+    fn encode_body_preserves_sentinel() {
+        let fact = Fact::parse(&body(SIZE_SENTINEL)).unwrap();
+        let encoded = fact.encode_body();
+        assert_eq!(encoded, body(SIZE_SENTINEL));
+        assert!(Fact::parse(&encoded).unwrap().is_deferred());
     }
 }

@@ -143,6 +143,26 @@ impl Inst {
     pub fn covers_velocity(&self, velocity: u8) -> bool {
         self.low_velocity <= velocity && velocity <= self.high_velocity
     }
+
+    /// Serialize this `inst` chunk *body* — the fixed 7 bytes a walker
+    /// would hand to [`Inst::parse`], one byte per field in the catalogued
+    /// order (`UnshiftedNote`, `FineTune`, `Gain`, `LowNote`, `HighNote`,
+    /// `LowVelocity`, `HighVelocity`).
+    ///
+    /// The signed `fine_tune` / `gain` re-emit from their retained raw
+    /// bytes, so a parsed `inst` round-trips byte-for-byte through
+    /// [`Inst::parse`] regardless of the sign interpretation.
+    pub fn encode_body(&self) -> [u8; INST_LEN] {
+        [
+            self.unshifted_note,
+            self.fine_tune_raw,
+            self.gain_raw,
+            self.low_note,
+            self.high_note,
+            self.low_velocity,
+            self.high_velocity,
+        ]
+    }
 }
 
 #[cfg(test)]
@@ -249,5 +269,20 @@ mod tests {
         assert_eq!(inst.fine_tune(), 0);
         assert_eq!(inst.gain(), 0);
         assert_eq!(inst.note_range(), (0, 0));
+    }
+
+    #[test]
+    fn encode_body_round_trips() {
+        let b = body(60, 0xCE, 0xFA, 48, 72, 1, 127);
+        let inst = Inst::parse(&b).unwrap();
+        let encoded = inst.encode_body();
+        assert_eq!(&encoded[..], &b[..]);
+        assert_eq!(Inst::parse(&encoded).unwrap(), inst);
+    }
+
+    #[test]
+    fn encode_body_is_seven_bytes() {
+        let inst = Inst::default();
+        assert_eq!(inst.encode_body().len(), INST_LEN);
     }
 }

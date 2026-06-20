@@ -193,7 +193,8 @@ pub use chna::{
     TRACK_REF_LEN, UID_LEN,
 };
 pub use chunk::{
-    read_chunk_header, read_form_type, skip_chunk, skip_pad, ChunkHeader, FOURCC_LIST, FOURCC_RIFF,
+    encode_chunk, read_chunk_header, read_form_type, skip_chunk, skip_pad, write_chunk_header,
+    ChunkHeader, FOURCC_LIST, FOURCC_RIFF,
 };
 pub use cset::{
     country_name, country_name_defaulted, language_name, language_name_defaulted, CharacterSet,
