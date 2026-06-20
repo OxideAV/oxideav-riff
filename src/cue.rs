@@ -112,6 +112,21 @@ impl CuePoint {
     pub fn is_silent(&self) -> bool {
         &self.fcc_chunk == b"slnt"
     }
+
+    /// Serialize this cue point as a [`CUE_POINT_LEN`]-byte record — the
+    /// six fields in `dwName` / `dwPosition` / `fccChunk` / `dwChunkStart`
+    /// / `dwBlockStart` / `dwSampleOffset` order, each multi-byte field
+    /// little-endian. Exact inverse of [`CuePoint::parse`].
+    pub fn encode(&self) -> [u8; CUE_POINT_LEN] {
+        let mut b = [0u8; CUE_POINT_LEN];
+        b[0..4].copy_from_slice(&self.name.to_le_bytes());
+        b[4..8].copy_from_slice(&self.position.to_le_bytes());
+        b[8..12].copy_from_slice(&self.fcc_chunk);
+        b[12..16].copy_from_slice(&self.chunk_start.to_le_bytes());
+        b[16..20].copy_from_slice(&self.block_start.to_le_bytes());
+        b[20..24].copy_from_slice(&self.sample_offset.to_le_bytes());
+        b
+    }
 }
 
 /// A decoded `cue ` chunk: the ordered list of cue points it carries.
@@ -159,6 +174,33 @@ impl CueChunk {
             points.push(CuePoint::parse(&records[off..off + CUE_POINT_LEN])?);
         }
         Ok(CueChunk { points })
+    }
+
+    /// Build a `cue ` chunk from a list of cue points (in play order).
+    ///
+    /// The write-side counterpart of [`CueChunk::parse`]: emit the body
+    /// with [`CueChunk::encode_body`], which writes the `dwCuePoints`
+    /// count prefix that always agrees with the record count.
+    pub fn from_points(points: Vec<CuePoint>) -> Self {
+        CueChunk { points }
+    }
+
+    /// Append a cue point, returning `self` for chaining.
+    pub fn push(mut self, point: CuePoint) -> Self {
+        self.points.push(point);
+        self
+    }
+
+    /// Serialize this `cue ` chunk *body* — the `dwCuePoints` count
+    /// (always equal to the record count) followed by the 24-byte
+    /// cue-point records in order. Exact inverse of [`CueChunk::parse`].
+    pub fn encode_body(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(4 + self.points.len() * CUE_POINT_LEN);
+        out.extend_from_slice(&(self.points.len() as u32).to_le_bytes());
+        for point in &self.points {
+            out.extend_from_slice(&point.encode());
+        }
+        out
     }
 
     /// The cue points in on-wire order.
@@ -319,5 +361,47 @@ mod tests {
         assert_eq!(&p.fcc_chunk, b"junk");
         assert!(!p.is_data());
         assert!(!p.is_silent());
+    }
+
+    #[test]
+    fn point_encode_is_parse_inverse() {
+        let raw = rec(10, 1000, b"slnt", 8, 8, 12);
+        let p = CuePoint::parse(&raw).unwrap();
+        assert_eq!(&p.encode()[..], &raw[..]);
+        assert_eq!(CuePoint::parse(&p.encode()).unwrap(), p);
+    }
+
+    #[test]
+    fn encode_body_round_trips() {
+        let body = cue_body(&[
+            rec(10, 0, b"data", 0, 0, 0),
+            rec(20, 1000, b"slnt", 8, 8, 12),
+            rec(30, 2000, b"data", 64, 64, 0),
+        ]);
+        let cue = CueChunk::parse(&body).unwrap();
+        let encoded = cue.encode_body();
+        assert_eq!(encoded, body);
+        assert_eq!(CueChunk::parse(&encoded).unwrap(), cue);
+    }
+
+    #[test]
+    fn empty_encode_body_round_trips() {
+        let cue = CueChunk::new();
+        let encoded = cue.encode_body();
+        assert_eq!(encoded, 0u32.to_le_bytes().to_vec());
+        assert!(CueChunk::parse(&encoded).unwrap().is_empty());
+    }
+
+    #[test]
+    fn builder_encode_parse_round_trip() {
+        let cue =
+            CueChunk::from_points(vec![CuePoint::parse(&rec(1, 0, b"data", 0, 0, 0)).unwrap()])
+                .push(CuePoint::parse(&rec(2, 100, b"data", 0, 0, 100)).unwrap());
+        let encoded = cue.encode_body();
+        let reparsed = CueChunk::parse(&encoded).unwrap();
+        assert_eq!(reparsed, cue);
+        assert_eq!(reparsed.len(), 2);
+        // dwCuePoints prefix agrees with the record count.
+        assert_eq!(encoded[0..4], 2u32.to_le_bytes());
     }
 }

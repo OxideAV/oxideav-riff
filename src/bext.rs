@@ -311,6 +311,37 @@ impl BroadcastExtension {
         }
     }
 
+    /// Serialize this `bext` chunk *body* — the 602-byte fixed prefix
+    /// followed by the verbatim `CodingHistory` trailer.
+    ///
+    /// Every fixed field re-emits from its retained value in the field
+    /// order of Tech 3285; the `TimeReference` 64-bit value is split back
+    /// into its little-endian low/high DWORDs. The 180-byte `Reserved`
+    /// region (which `parse` does not retain) is emitted as zero, the
+    /// value the spec requires for Versions 1 and 2 — so a conforming
+    /// (zero-reserved) chunk round-trips byte-for-byte through
+    /// [`BroadcastExtension::parse`].
+    pub fn encode_body(&self) -> Vec<u8> {
+        let mut out = vec![0u8; BEXT_PREFIX_LEN];
+        out[0..256].copy_from_slice(&self.description);
+        out[256..288].copy_from_slice(&self.originator);
+        out[288..320].copy_from_slice(&self.originator_reference);
+        out[320..330].copy_from_slice(&self.origination_date);
+        out[330..338].copy_from_slice(&self.origination_time);
+        out[338..342].copy_from_slice(&(self.time_reference as u32).to_le_bytes());
+        out[342..346].copy_from_slice(&((self.time_reference >> 32) as u32).to_le_bytes());
+        out[346..348].copy_from_slice(&self.version.to_le_bytes());
+        out[348..412].copy_from_slice(&self.umid_bytes);
+        out[412..414].copy_from_slice(&self.loudness_value_x100.to_le_bytes());
+        out[414..416].copy_from_slice(&self.loudness_range_x100.to_le_bytes());
+        out[416..418].copy_from_slice(&self.max_true_peak_x100.to_le_bytes());
+        out[418..420].copy_from_slice(&self.max_momentary_x100.to_le_bytes());
+        out[420..422].copy_from_slice(&self.max_short_term_x100.to_le_bytes());
+        // out[422..602] is the Reserved field, left zero.
+        out.extend_from_slice(&self.coding_history);
+        out
+    }
+
     /// `CodingHistory` text, the trailing variable-length ASCII field.
     ///
     /// Each coding-process description is CR/LF terminated; this returns
@@ -458,6 +489,41 @@ mod tests {
         let body = bext_body(2, b"A=PCM\0\0");
         let bext = BroadcastExtension::parse(&body).unwrap();
         assert_eq!(bext.coding_history(), "A=PCM");
+    }
+
+    #[test]
+    fn encode_body_round_trips_full_v2() {
+        let mut body = bext_body(2, b"A=PCM,F=48000,W=16,M=stereo\r\n");
+        body[0..11].copy_from_slice(b"My session\0");
+        body[256..262].copy_from_slice(b"OxAV\0\0");
+        body[288..291].copy_from_slice(b"R1\0");
+        body[320..330].copy_from_slice(b"2026-06-13");
+        body[330..338].copy_from_slice(b"14-05-09");
+        body[338..342].copy_from_slice(&0x89AB_CDEFu32.to_le_bytes());
+        body[342..346].copy_from_slice(&0x0000_0012u32.to_le_bytes());
+        body[348] = 0x06;
+        body[412..414].copy_from_slice(&(-2305i16).to_le_bytes());
+        body[414..416].copy_from_slice(&700i16.to_le_bytes());
+        let bext = BroadcastExtension::parse(&body).unwrap();
+        let encoded = bext.encode_body();
+        // Conforming chunk (zero Reserved) round-trips byte-for-byte.
+        assert_eq!(encoded, body);
+        assert_eq!(BroadcastExtension::parse(&encoded).unwrap(), bext);
+    }
+
+    #[test]
+    fn encode_body_zeroes_reserved_region() {
+        // A source with non-zero Reserved bytes is normalised to zero on
+        // re-encode (the spec-required value); everything else survives.
+        let mut body = bext_body(2, b"");
+        for b in body.iter_mut().take(602).skip(422) {
+            *b = 0xEE;
+        }
+        let bext = BroadcastExtension::parse(&body).unwrap();
+        let encoded = bext.encode_body();
+        assert!(encoded[422..602].iter().all(|&b| b == 0));
+        // The normalised body still re-parses to the same struct.
+        assert_eq!(BroadcastExtension::parse(&encoded).unwrap(), bext);
     }
 
     #[test]

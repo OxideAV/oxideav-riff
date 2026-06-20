@@ -74,6 +74,17 @@ impl PlaySegment {
             loops: dw(8),
         })
     }
+
+    /// Serialize this play segment as a [`PLAY_SEGMENT_LEN`]-byte record —
+    /// the three fields in `dwName` / `dwLength` / `dwLoops` order, each
+    /// little-endian. Exact inverse of [`PlaySegment::parse`].
+    pub fn encode(&self) -> [u8; PLAY_SEGMENT_LEN] {
+        let mut b = [0u8; PLAY_SEGMENT_LEN];
+        b[0..4].copy_from_slice(&self.name.to_le_bytes());
+        b[4..8].copy_from_slice(&self.length.to_le_bytes());
+        b[8..12].copy_from_slice(&self.loops.to_le_bytes());
+        b
+    }
 }
 
 /// A decoded `plst` chunk: the ordered list of play segments it carries.
@@ -121,6 +132,34 @@ impl Playlist {
             segments.push(PlaySegment::parse(&records[off..off + PLAY_SEGMENT_LEN])?);
         }
         Ok(Playlist { segments })
+    }
+
+    /// Build a `plst` chunk from a list of play segments (in play order).
+    ///
+    /// The write-side counterpart of [`Playlist::parse`]: emit the body
+    /// with [`Playlist::encode_body`], which writes the `dwSegments`
+    /// count prefix that always agrees with the record count.
+    pub fn from_segments(segments: Vec<PlaySegment>) -> Self {
+        Playlist { segments }
+    }
+
+    /// Append a play segment, returning `self` for chaining.
+    pub fn push(mut self, segment: PlaySegment) -> Self {
+        self.segments.push(segment);
+        self
+    }
+
+    /// Serialize this `plst` chunk *body* — the `dwSegments` count
+    /// (always equal to the record count) followed by the 12-byte
+    /// play-segment records in play order. Exact inverse of
+    /// [`Playlist::parse`].
+    pub fn encode_body(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(4 + self.segments.len() * PLAY_SEGMENT_LEN);
+        out.extend_from_slice(&(self.segments.len() as u32).to_le_bytes());
+        for segment in &self.segments {
+            out.extend_from_slice(&segment.encode());
+        }
+        out
     }
 
     /// The play segments in on-wire (play) order.
@@ -253,5 +292,39 @@ mod tests {
     fn segment_parse_rejects_wrong_length() {
         let err = PlaySegment::parse(&[0u8; 11]).unwrap_err();
         assert!(format!("{err}").contains("not 12 bytes"));
+    }
+
+    #[test]
+    fn segment_encode_is_parse_inverse() {
+        let raw = seg(20, 2000, 4);
+        let s = PlaySegment::parse(&raw).unwrap();
+        assert_eq!(&s.encode()[..], &raw[..]);
+        assert_eq!(PlaySegment::parse(&s.encode()).unwrap(), s);
+    }
+
+    #[test]
+    fn encode_body_round_trips() {
+        let body = plst_body(&[seg(10, 1000, 1), seg(20, 2000, 4), seg(10, 500, 2)]);
+        let pl = Playlist::parse(&body).unwrap();
+        let encoded = pl.encode_body();
+        assert_eq!(encoded, body);
+        assert_eq!(Playlist::parse(&encoded).unwrap(), pl);
+    }
+
+    #[test]
+    fn empty_encode_body_round_trips() {
+        let pl = Playlist::new();
+        assert_eq!(pl.encode_body(), 0u32.to_le_bytes().to_vec());
+        assert!(Playlist::parse(&pl.encode_body()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn builder_encode_parse_round_trip() {
+        let pl = Playlist::from_segments(vec![PlaySegment::parse(&seg(1, 100, 1)).unwrap()])
+            .push(PlaySegment::parse(&seg(2, 200, 3)).unwrap());
+        let encoded = pl.encode_body();
+        let reparsed = Playlist::parse(&encoded).unwrap();
+        assert_eq!(reparsed, pl);
+        assert_eq!(encoded[0..4], 2u32.to_le_bytes());
     }
 }

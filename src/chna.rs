@@ -166,6 +166,20 @@ impl AudioId {
     pub fn pack_ref_str(&self) -> Option<&str> {
         trimmed_str(&self.pack_ref)
     }
+
+    /// Serialize this `audioID` record as a fixed [`AUDIO_ID_LEN`] (40)
+    /// bytes — `trackIndex` (little-endian) then the three fixed-width raw
+    /// identifier fields and the trailing `pad` byte, all verbatim. Exact
+    /// inverse of [`AudioId::parse`].
+    pub fn encode(&self) -> [u8; AUDIO_ID_LEN] {
+        let mut b = [0u8; AUDIO_ID_LEN];
+        b[0..2].copy_from_slice(&self.track_index.to_le_bytes());
+        b[2..2 + UID_LEN].copy_from_slice(&self.uid);
+        b[14..14 + TRACK_REF_LEN].copy_from_slice(&self.track_ref);
+        b[28..28 + PACK_REF_LEN].copy_from_slice(&self.pack_ref);
+        b[39] = self.pad;
+        b
+    }
 }
 
 /// Trim trailing NUL bytes from a fixed-width field and decode as UTF-8.
@@ -238,6 +252,41 @@ impl ChannelAllocation {
             num_uids,
             records,
         })
+    }
+
+    /// Build a `chna` chunk from explicit header counts and the full
+    /// on-wire record list (including any over-provisioned zeroed slots).
+    ///
+    /// The write-side counterpart of [`ChannelAllocation::parse`]; emit
+    /// the body with [`ChannelAllocation::encode_body`]. The `num_uids`
+    /// header is independent of the record count (over-provisioning), so
+    /// it is taken from the caller rather than derived.
+    pub fn from_records(num_tracks: u16, num_uids: u16, records: Vec<AudioId>) -> Self {
+        ChannelAllocation {
+            num_tracks,
+            num_uids,
+            records,
+        }
+    }
+
+    /// Append an `audioID` record, returning `self` for chaining.
+    pub fn push(mut self, record: AudioId) -> Self {
+        self.records.push(record);
+        self
+    }
+
+    /// Serialize this `chna` chunk *body* — the `numTracks` / `numUIDs`
+    /// preamble (both little-endian, emitted verbatim) followed by every
+    /// `audioID` record in on-wire order, including over-provisioned
+    /// zeroed slots. Exact inverse of [`ChannelAllocation::parse`].
+    pub fn encode_body(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(CHNA_PREFIX_LEN + self.records.len() * AUDIO_ID_LEN);
+        out.extend_from_slice(&self.num_tracks.to_le_bytes());
+        out.extend_from_slice(&self.num_uids.to_le_bytes());
+        for record in &self.records {
+            out.extend_from_slice(&record.encode());
+        }
+        out
     }
 
     /// Every `audioID` record on the wire, in order (including unused
@@ -506,5 +555,64 @@ mod tests {
         raw[2] = 0xFF; // first byte of UID
         let r = AudioId::parse(&raw).unwrap();
         assert!(r.uid_str().is_none());
+    }
+
+    #[test]
+    fn record_encode_is_parse_inverse() {
+        let raw = rec(1, b"ATU_00000001", b"AT_00010001_01", b"AP_00010002", 0xAB);
+        let r = AudioId::parse(&raw).unwrap();
+        assert_eq!(&r.encode()[..], &raw[..]);
+        assert_eq!(AudioId::parse(&r.encode()).unwrap(), r);
+    }
+
+    #[test]
+    fn encode_body_round_trips_stereo() {
+        let body = chna_body(
+            2,
+            2,
+            &[
+                rec(1, b"ATU_00000001", b"AT_00010001_01", b"AP_00010002", 0),
+                rec(2, b"ATU_00000002", b"AT_00010002_01", b"AP_00010002", 0),
+            ],
+        );
+        let chna = ChannelAllocation::parse(&body).unwrap();
+        let encoded = chna.encode_body();
+        assert_eq!(encoded, body);
+        assert_eq!(ChannelAllocation::parse(&encoded).unwrap(), chna);
+    }
+
+    #[test]
+    fn encode_body_preserves_over_provisioning() {
+        let mut records = vec![rec(
+            1,
+            b"ATU_00000001",
+            b"AT_00010001_01",
+            b"AP_00031001",
+            0,
+        )];
+        for _ in 1..8 {
+            records.push(rec(0, &[], &[], &[], 0));
+        }
+        let body = chna_body(1, 1, &records);
+        let chna = ChannelAllocation::parse(&body).unwrap();
+        let encoded = chna.encode_body();
+        // Over-provisioned zeroed slots and numUIDs < record_count survive.
+        assert_eq!(encoded, body);
+        let reparsed = ChannelAllocation::parse(&encoded).unwrap();
+        assert_eq!(reparsed.record_count(), 8);
+        assert_eq!(reparsed.num_uids, 1);
+    }
+
+    #[test]
+    fn builder_encode_parse_round_trip() {
+        let chna = ChannelAllocation::from_records(1, 1, Vec::new())
+            .push(AudioId::parse(&rec(1, b"ATU_00000001", b"AC_00010001_00", &[], 0)).unwrap());
+        let encoded = chna.encode_body();
+        let reparsed = ChannelAllocation::parse(&encoded).unwrap();
+        assert_eq!(reparsed, chna);
+        assert_eq!(
+            reparsed.records()[0].track_ref_str(),
+            Some("AC_00010001_00")
+        );
     }
 }

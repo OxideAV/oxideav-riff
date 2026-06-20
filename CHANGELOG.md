@@ -29,6 +29,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `write_chunk_header` / `encode_chunk`; per-chunk `encode_body` /
   `encode` / `new` / `with_override`. 24 new round-trip tests.
 
+- **Round 351 — chunk-encode (mux) path: variable-width body encoders.**
+  Write-side inverses for the count-prefixed and table-bearing chunks.
+  `CueChunk::encode_body` / `CuePoint::encode` and `Playlist::encode_body`
+  / `PlaySegment::encode` emit the `dwCuePoints` / `dwSegments` count
+  prefix (always agreeing with the record count) plus the 24- / 12-byte
+  records, with `from_points` / `from_segments` / `push` builders.
+  `Smpl::encode_body` / `SampleLoop::encode` emit the 36-byte header, the
+  loop table, and the `SamplerData` trailer — deriving `NumSampleLoops` /
+  `SamplerDataLen` from the actual list lengths so the body is always
+  self-consistent. `BroadcastExtension::encode_body` emits the 602-byte
+  `bext` prefix (the 180-byte `Reserved` region normalised to zero, the
+  spec-required value) plus the verbatim `CodingHistory`.
+  `ChannelAllocation::encode_body` / `AudioId::encode` emit the
+  `numTracks` / `numUIDs` preamble plus the 40-byte `audioID` records,
+  preserving over-provisioned zeroed slots, with `from_records` / `push`
+  builders. 18 new round-trip tests.
+
 - **Round 340 — BW64 ADM XML-carrier decoders (`axml` / `bxml` / `sxml`).**
   Three typed readers for the *Audio Definition Model* metadata document
   that a BW64 (ADM-carrying) WAV file pairs with the binary `chna` table,

@@ -85,6 +85,12 @@ impl SampleLoop {
         raw.copy_from_slice(bytes);
         SampleLoop { raw }
     }
+
+    /// The 24 raw bytes of this loop record, in on-wire order. Since the
+    /// record is preserved verbatim this is the byte-exact serialization.
+    pub fn encode(&self) -> [u8; SAMPLE_LOOP_LEN] {
+        self.raw
+    }
 }
 
 /// A decoded WAV `smpl` (sampler) chunk.
@@ -210,6 +216,41 @@ impl Smpl {
     /// `SamplerData` trailer.
     pub fn has_sampler_data(&self) -> bool {
         !self.sampler_data.is_empty()
+    }
+
+    /// Serialize this `smpl` chunk *body* — the 36-byte fixed header, the
+    /// loop table, then the opaque `SamplerData` trailer.
+    ///
+    /// To guarantee the emitted body always re-parses, the on-wire
+    /// `NumSampleLoops` and `SamplerDataLen` are written from the actual
+    /// [`Smpl::loops`] / [`Smpl::sampler_data`] lengths rather than the
+    /// stored count fields — so a parsed `smpl` round-trips and a
+    /// hand-built one is never internally inconsistent. The other seven
+    /// header fields emit verbatim.
+    pub fn encode_body(&self) -> Vec<u8> {
+        let num_loops = self.loops.len() as u32;
+        let data_len = self.sampler_data.len() as u32;
+        let mut out = Vec::with_capacity(
+            SMPL_HEADER_LEN + self.loops.len() * SAMPLE_LOOP_LEN + data_len as usize,
+        );
+        for v in [
+            self.manufacturer,
+            self.product,
+            self.sample_period,
+            self.midi_unity_note,
+            self.midi_pitch_fraction,
+            self.smpte_format,
+            self.smpte_offset,
+            num_loops,
+            data_len,
+        ] {
+            out.extend_from_slice(&v.to_le_bytes());
+        }
+        for loop_rec in &self.loops {
+            out.extend_from_slice(&loop_rec.encode());
+        }
+        out.extend_from_slice(&self.sampler_data);
+        out
     }
 }
 
@@ -357,5 +398,48 @@ mod tests {
         assert!(smpl.loops.is_empty());
         assert!(smpl.sampler_data.is_empty());
         assert!(smpl.smpte_none());
+    }
+
+    #[test]
+    fn encode_body_header_only_round_trips() {
+        let body = header(0, 0, 22_675, 60, 0, 0, 0, 0, 0);
+        let smpl = Smpl::parse(&body).unwrap();
+        let encoded = smpl.encode_body();
+        assert_eq!(encoded, body);
+        assert_eq!(Smpl::parse(&encoded).unwrap(), smpl);
+    }
+
+    #[test]
+    fn encode_body_loops_and_data_round_trips() {
+        let mut body = header(0x42, 0x07, 20_833, 69, 0x8000_0000, 30, 0, 2, 5);
+        body.extend_from_slice(&[0xA0; SAMPLE_LOOP_LEN]);
+        body.extend_from_slice(&[0xB1; SAMPLE_LOOP_LEN]);
+        body.extend_from_slice(&[1, 2, 3, 4, 5]);
+        let smpl = Smpl::parse(&body).unwrap();
+        let encoded = smpl.encode_body();
+        assert_eq!(encoded, body);
+        assert_eq!(Smpl::parse(&encoded).unwrap(), smpl);
+    }
+
+    #[test]
+    fn encode_derives_counts_from_actual_lengths() {
+        // A hand-built Smpl with stale count fields re-encodes to a
+        // self-consistent body that re-parses cleanly.
+        let smpl = Smpl {
+            midi_unity_note: 60,
+            num_sample_loops: 99, // stale — ignored on encode
+            sampler_data_len: 99, // stale — ignored on encode
+            loops: vec![SampleLoop {
+                raw: [0x33; SAMPLE_LOOP_LEN],
+            }],
+            sampler_data: vec![7, 8, 9],
+            ..Smpl::default()
+        };
+        let encoded = smpl.encode_body();
+        let reparsed = Smpl::parse(&encoded).unwrap();
+        assert_eq!(reparsed.num_sample_loops, 1);
+        assert_eq!(reparsed.sampler_data_len, 3);
+        assert_eq!(reparsed.loops.len(), 1);
+        assert_eq!(reparsed.sampler_data, vec![7, 8, 9]);
     }
 }
