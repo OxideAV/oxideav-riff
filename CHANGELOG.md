@@ -46,6 +46,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   preserving over-provisioned zeroed slots, with `from_records` / `push`
   builders. 18 new round-trip tests.
 
+- **Round 351 — chunk-encode (mux) path: LIST + descriptor encoders.**
+  Write-side inverses for the remaining chunk families.
+  `WaveFormat::encode_body` (+ `Guid::to_le_wire`) re-emits the `fmt `
+  descriptor across all three forms — `WAVEFORMAT` / `WAVEFORMATEX` /
+  `WAVEFORMATEXTENSIBLE` — rebuilding the 22-byte extensible tail from the
+  typed `ExtensibleFields` and preserving any trailing extension bytes.
+  `InfoList::encode_list_body` / `encode_chunk` (+ `push`) and
+  `AdtlList::encode_list_body` / `encode_chunk` (+ `push`) emit the
+  `LIST INFO` / `LIST adtl` groups, framing each child with
+  `chunk::encode_chunk` (ZSTR terminators re-added for `INFO` / `labl` /
+  `note`; per-entry `AdtlEntry::encode_body` / `fourcc`, plus
+  `LabeledText::encode_body` / `EmbeddedFile::encode_body`).
+  `AxmlChunk` / `BxmlChunk` / `SxmlChunk` gained `encode_body`, with the
+  `sxml` encoder deriving `subXMLCkTbSize` and each `subXMLChunkSize` from
+  the actual payload lengths so the body is always self-consistent. 23 new
+  round-trip tests (parse↔encode and, for the LIST chunks, full
+  encode→walk→collect round-trips).
+
 - **Round 340 — BW64 ADM XML-carrier decoders (`axml` / `bxml` / `sxml`).**
   Three typed readers for the *Audio Definition Model* metadata document
   that a BW64 (ADM-carrying) WAV file pairs with the binary `chna` table,

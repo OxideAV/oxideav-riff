@@ -158,6 +158,23 @@ impl LabeledText {
     pub fn language_name(&self) -> Option<&'static str> {
         crate::cset::language_name(self.language, self.dialect)
     }
+
+    /// Serialize this `ltxt` chunk *body* — the 20-byte fixed prefix
+    /// (`dwName` / `dwSampleLength` / `dwPurpose` / `wCountry` /
+    /// `wLanguage` / `wDialect` / `wCodePage`) followed by the verbatim
+    /// trailing text. Exact inverse of [`LabeledText::parse`].
+    pub fn encode_body(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(LTXT_PREFIX_LEN + self.text.len());
+        out.extend_from_slice(&self.name.to_le_bytes());
+        out.extend_from_slice(&self.sample_length.to_le_bytes());
+        out.extend_from_slice(&self.purpose);
+        out.extend_from_slice(&self.country.to_le_bytes());
+        out.extend_from_slice(&self.language.to_le_bytes());
+        out.extend_from_slice(&self.dialect.to_le_bytes());
+        out.extend_from_slice(&self.code_page.to_le_bytes());
+        out.extend_from_slice(&self.text);
+        out
+    }
 }
 
 /// A decoded `file` (embedded-media) record.
@@ -197,6 +214,17 @@ impl EmbeddedFile {
             med_type: dw(body, 4),
             data: body[FILE_PREFIX_LEN..].to_vec(),
         })
+    }
+
+    /// Serialize this `file` chunk *body* — the 8-byte fixed prefix
+    /// (`dwName` / `dwMedType`) followed by the verbatim embedded media
+    /// payload. Exact inverse of [`EmbeddedFile::parse`].
+    pub fn encode_body(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(FILE_PREFIX_LEN + self.data.len());
+        out.extend_from_slice(&self.name.to_le_bytes());
+        out.extend_from_slice(&self.med_type.to_le_bytes());
+        out.extend_from_slice(&self.data);
+        out
     }
 }
 
@@ -276,6 +304,38 @@ impl AdtlEntry {
             AdtlEntry::Other { .. } => None,
         }
     }
+
+    /// The four-character code this entry encodes to.
+    pub fn fourcc(&self) -> [u8; 4] {
+        match self {
+            AdtlEntry::Label { .. } => FOURCC_LABL,
+            AdtlEntry::Note { .. } => FOURCC_NOTE,
+            AdtlEntry::LabeledText(_) => FOURCC_LTXT,
+            AdtlEntry::File(_) => FOURCC_FILE,
+            AdtlEntry::Other { fourcc, .. } => *fourcc,
+        }
+    }
+
+    /// Serialize this entry's chunk *body* (without the 8-byte header).
+    ///
+    /// `labl` / `note` emit the 4-byte `dwName` plus the text re-encoded
+    /// as a ZSTR (the value bytes + a `0x00` terminator); `ltxt` / `file`
+    /// delegate to [`LabeledText::encode_body`] / [`EmbeddedFile::encode_body`];
+    /// [`AdtlEntry::Other`] emits its preserved body verbatim. The
+    /// inverse of [`AdtlEntry::parse`] for the common all-ASCII text case.
+    pub fn encode_body(&self) -> Vec<u8> {
+        match self {
+            AdtlEntry::Label { name, text } | AdtlEntry::Note { name, text } => {
+                let mut out = name.to_le_bytes().to_vec();
+                out.extend_from_slice(text.as_bytes());
+                out.push(0); // ZSTR terminator
+                out
+            }
+            AdtlEntry::LabeledText(l) => l.encode_body(),
+            AdtlEntry::File(f) => f.encode_body(),
+            AdtlEntry::Other { body, .. } => body.clone(),
+        }
+    }
 }
 
 /// A decoded `LIST adtl` block: the associated-data entries in on-wire
@@ -301,6 +361,38 @@ impl AdtlList {
     pub fn push_chunk(&mut self, fourcc: [u8; 4], body: &[u8]) -> Result<()> {
         self.entries.push(AdtlEntry::parse(fourcc, body)?);
         Ok(())
+    }
+
+    /// Append an already-built entry, returning `self` for chaining (the
+    /// write-side counterpart of [`AdtlList::push_chunk`]).
+    pub fn push(mut self, entry: AdtlEntry) -> Self {
+        self.entries.push(entry);
+        self
+    }
+
+    /// Serialize the `LIST adtl` *body* — the `adtl` list-type word
+    /// followed by one child chunk per entry, in on-wire order, each
+    /// framed with [`crate::chunk::encode_chunk`] (so an odd-length body
+    /// gets its RIFF pad byte).
+    ///
+    /// The inverse of [`AdtlList::collect_from`] for the common
+    /// all-ASCII text case (see [`AdtlEntry::encode_body`]).
+    pub fn encode_list_body(&self) -> Result<Vec<u8>> {
+        let mut out = Vec::new();
+        out.extend_from_slice(&FOURCC_ADTL);
+        for entry in &self.entries {
+            crate::chunk::encode_chunk(&mut out, &entry.fourcc(), &entry.encode_body())?;
+        }
+        Ok(out)
+    }
+
+    /// Serialize the whole `LIST adtl` chunk — the `LIST` header (with the
+    /// computed `ckSize`) wrapping [`AdtlList::encode_list_body`].
+    pub fn encode_chunk(&self) -> Result<Vec<u8>> {
+        let body = self.encode_list_body()?;
+        let mut out = Vec::new();
+        crate::chunk::encode_chunk(&mut out, &crate::chunk::FOURCC_LIST, &body)?;
+        Ok(out)
     }
 
     /// The entries in on-wire order.
@@ -656,5 +748,78 @@ mod tests {
         assert!(adtl.is_empty());
         assert_eq!(adtl.label(1), None);
         assert_eq!(adtl.note(1), None);
+    }
+
+    #[test]
+    fn ltxt_encode_body_round_trips() {
+        let body = ltxt_body(7, 4410, b"scrp", [44, 9, 2, 1252], b"Hello");
+        let l = LabeledText::parse(&body).unwrap();
+        assert_eq!(l.encode_body(), body);
+        assert_eq!(LabeledText::parse(&l.encode_body()).unwrap(), l);
+    }
+
+    #[test]
+    fn file_encode_body_round_trips() {
+        let body = file_body(3, u32::from_le_bytes(*b"RDIB"), b"\x00\x01\x02\x03");
+        let f = EmbeddedFile::parse(&body).unwrap();
+        assert_eq!(f.encode_body(), body);
+        assert_eq!(EmbeddedFile::parse(&f.encode_body()).unwrap(), f);
+    }
+
+    #[test]
+    fn entry_encode_body_round_trips_each_kind() {
+        for entry in [
+            AdtlEntry::parse(FOURCC_LABL, &labl_body(1, b"Intro\0")).unwrap(),
+            AdtlEntry::parse(FOURCC_NOTE, &labl_body(2, b"note\0")).unwrap(),
+            AdtlEntry::parse(FOURCC_LTXT, &ltxt_body(3, 100, b"capt", [0; 4], b"cap")).unwrap(),
+            AdtlEntry::parse(FOURCC_FILE, &file_body(4, 0, b"\x01\x02")).unwrap(),
+            AdtlEntry::parse(*b"junk", b"\xde\xad").unwrap(),
+        ] {
+            let reparsed = AdtlEntry::parse(entry.fourcc(), &entry.encode_body()).unwrap();
+            assert_eq!(reparsed, entry);
+        }
+    }
+
+    #[test]
+    fn encode_list_body_round_trips_through_collect() {
+        let list = AdtlList::new()
+            .push(AdtlEntry::Label {
+                name: 1,
+                text: "Intro".to_string(),
+            })
+            .push(AdtlEntry::Note {
+                name: 1,
+                text: "fade in".to_string(),
+            })
+            .push(
+                AdtlEntry::parse(
+                    FOURCC_LTXT,
+                    &ltxt_body(2, 22050, b"capt", [0; 4], b"caption"),
+                )
+                .unwrap(),
+            );
+        let chunk = list.encode_chunk().unwrap();
+        assert_eq!(&chunk[0..4], b"LIST");
+        let mut cur = Cursor::new(chunk);
+        let header = crate::chunk::read_chunk_header(&mut cur).unwrap().unwrap();
+        let mut walker = crate::Walker::open_within(&mut cur, &header).unwrap();
+        let collected = AdtlList::collect_from(&mut walker).unwrap();
+        assert_eq!(collected, list);
+    }
+
+    #[test]
+    fn encode_pads_odd_length_child() {
+        // labl name(4) + "Odd"(3) + ZSTR terminator(1) = 8-byte body (even);
+        // use a 2-char text to force an odd body: name(4)+"Hi"(2)+NUL(1)=7.
+        let list = AdtlList::new().push(AdtlEntry::Label {
+            name: 9,
+            text: "Hi".to_string(),
+        });
+        let chunk = list.encode_chunk().unwrap();
+        let mut cur = Cursor::new(chunk);
+        let header = crate::chunk::read_chunk_header(&mut cur).unwrap().unwrap();
+        let mut walker = crate::Walker::open_within(&mut cur, &header).unwrap();
+        let collected = AdtlList::collect_from(&mut walker).unwrap();
+        assert_eq!(collected.label(9), Some("Hi"));
     }
 }

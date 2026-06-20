@@ -137,6 +137,18 @@ impl Guid {
         }
     }
 
+    /// Encode this GUID to its 16-byte on-wire (mixed-endian) form — the
+    /// exact inverse of [`Guid::from_le_wire`]: `Data1` / `Data2` /
+    /// `Data3` little-endian, `Data4` verbatim.
+    pub fn to_le_wire(&self) -> [u8; 16] {
+        let mut b = [0u8; 16];
+        b[0..4].copy_from_slice(&self.data1.to_le_bytes());
+        b[4..6].copy_from_slice(&self.data2.to_le_bytes());
+        b[6..8].copy_from_slice(&self.data3.to_le_bytes());
+        b[8..16].copy_from_slice(&self.data4);
+        b
+    }
+
     /// Render the canonical hyphenated lower-case GUID string
     /// (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`).
     pub fn to_hyphenated(&self) -> String {
@@ -309,6 +321,56 @@ impl WaveFormat {
             .as_ref()
             .map(|e| e.channel_mask.count_ones())
     }
+
+    /// Serialize this `fmt ` chunk *body*.
+    ///
+    /// Always emits the 16-byte `WAVEFORMAT` prefix. A `WAVEFORMATEX`
+    /// `cbSize` + extension tail is emitted whenever there is anything to
+    /// carry — either a parsed [`WaveFormat::extensible`] tail or
+    /// non-empty raw [`WaveFormat::extension`] bytes.
+    ///
+    /// When [`WaveFormat::extensible`] is `Some`, the 22-byte
+    /// `WAVEFORMATEXTENSIBLE` tail (`Samples` union + `dwChannelMask` +
+    /// 16-byte `SubFormat` GUID) is rebuilt from those typed fields, then
+    /// any raw `extension` bytes beyond the first 22 are appended verbatim
+    /// (a writer that carried extra bytes after the GUID round-trips). For
+    /// a non-extensible descriptor the raw `extension` is emitted as-is.
+    ///
+    /// A `WaveFormat` parsed from a bare 16-byte body re-encodes to 16
+    /// bytes; one parsed from an 18-byte `WAVEFORMATEX` with `cbSize == 0`
+    /// also re-encodes to 16 bytes (the two are semantically identical —
+    /// an empty extension). Every other parsed body round-trips
+    /// byte-for-byte.
+    pub fn encode_body(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(18 + self.extension.len());
+        out.extend_from_slice(&self.format_tag.to_le_bytes());
+        out.extend_from_slice(&self.channels.to_le_bytes());
+        out.extend_from_slice(&self.sample_rate.to_le_bytes());
+        out.extend_from_slice(&self.avg_bytes_per_sec.to_le_bytes());
+        out.extend_from_slice(&self.block_align.to_le_bytes());
+        out.extend_from_slice(&self.bits_per_sample.to_le_bytes());
+
+        // Build the cbSize-counted extension.
+        let extension = if let Some(ext) = &self.extensible {
+            let mut e = Vec::with_capacity(self.extension.len().max(22));
+            e.extend_from_slice(&ext.samples.to_le_bytes());
+            e.extend_from_slice(&ext.channel_mask.to_le_bytes());
+            e.extend_from_slice(&ext.sub_format.to_le_wire());
+            // Preserve any bytes a writer placed after the 22-byte tail.
+            if self.extension.len() > 22 {
+                e.extend_from_slice(&self.extension[22..]);
+            }
+            e
+        } else {
+            self.extension.clone()
+        };
+
+        if !extension.is_empty() {
+            out.extend_from_slice(&(extension.len() as u16).to_le_bytes());
+            out.extend_from_slice(&extension);
+        }
+        out
+    }
 }
 
 #[cfg(test)]
@@ -480,5 +542,69 @@ mod tests {
             KSDATAFORMAT_SUBTYPE_WAVEFORMATEX_BASE.waveformatex_tag(),
             Some(0)
         );
+    }
+
+    #[test]
+    fn guid_to_le_wire_is_from_inverse() {
+        let wire = [
+            0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38,
+            0x9b, 0x71,
+        ];
+        let g = Guid::from_le_wire(&wire);
+        assert_eq!(g.to_le_wire(), wire);
+    }
+
+    #[test]
+    fn encode_body_bare_waveformat_round_trips() {
+        let body = pcm16_waveformat();
+        let f = WaveFormat::parse(&body).unwrap();
+        let encoded = f.encode_body();
+        assert_eq!(encoded, body);
+        assert_eq!(WaveFormat::parse(&encoded).unwrap(), f);
+    }
+
+    #[test]
+    fn encode_body_zero_cbsize_normalises_to_bare() {
+        let mut body = pcm16_waveformat();
+        body.extend_from_slice(&0u16.to_le_bytes()); // cbSize = 0
+        let f = WaveFormat::parse(&body).unwrap();
+        let encoded = f.encode_body();
+        // Re-encodes to the bare 16-byte form (semantically identical).
+        assert_eq!(encoded, pcm16_waveformat());
+        assert_eq!(WaveFormat::parse(&encoded).unwrap(), f);
+    }
+
+    #[test]
+    fn encode_body_adpcm_extension_round_trips() {
+        let mut body = pcm16_waveformat();
+        body[0..2].copy_from_slice(&WAVE_FORMAT_ADPCM.to_le_bytes());
+        body.extend_from_slice(&4u16.to_le_bytes());
+        body.extend_from_slice(&[0xDE, 0xAD, 0xBE, 0xEF]);
+        let f = WaveFormat::parse(&body).unwrap();
+        let encoded = f.encode_body();
+        assert_eq!(encoded, body);
+        assert_eq!(WaveFormat::parse(&encoded).unwrap(), f);
+    }
+
+    #[test]
+    fn encode_body_extensible_round_trips() {
+        let mut body = Vec::new();
+        body.extend_from_slice(&WAVE_FORMAT_EXTENSIBLE.to_le_bytes());
+        body.extend_from_slice(&6u16.to_le_bytes());
+        body.extend_from_slice(&48_000u32.to_le_bytes());
+        body.extend_from_slice(&864_000u32.to_le_bytes());
+        body.extend_from_slice(&24u16.to_le_bytes());
+        body.extend_from_slice(&32u16.to_le_bytes());
+        body.extend_from_slice(&22u16.to_le_bytes());
+        body.extend_from_slice(&24u16.to_le_bytes());
+        body.extend_from_slice(&0x0000_003Fu32.to_le_bytes());
+        body.extend_from_slice(&1u32.to_le_bytes());
+        body.extend_from_slice(&0u16.to_le_bytes());
+        body.extend_from_slice(&0x0010u16.to_le_bytes());
+        body.extend_from_slice(&[0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71]);
+        let f = WaveFormat::parse(&body).unwrap();
+        let encoded = f.encode_body();
+        assert_eq!(encoded, body);
+        assert_eq!(WaveFormat::parse(&encoded).unwrap(), f);
     }
 }

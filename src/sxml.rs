@@ -101,6 +101,12 @@ impl AxmlChunk {
     pub fn xml_str(&self) -> Option<&str> {
         core::str::from_utf8(&self.xml).ok()
     }
+
+    /// Serialize this `axml` chunk *body* — the whole XML payload
+    /// verbatim. Exact inverse of [`AxmlChunk::parse`].
+    pub fn encode_body(&self) -> Vec<u8> {
+        self.xml.clone()
+    }
 }
 
 /// A decoded `bxml` chunk — compressed ADM XML.
@@ -144,6 +150,16 @@ impl BxmlChunk {
     /// `true` if `fmt_type` marks the payload as uncompressed (`0x0000`).
     pub fn is_uncompressed(&self) -> bool {
         self.fmt_type == FMT_TYPE_UNCOMPRESSED
+    }
+
+    /// Serialize this `bxml` chunk *body* — the 2-byte little-endian
+    /// `fmtType` selector followed by the verbatim (possibly compressed)
+    /// payload. Exact inverse of [`BxmlChunk::parse`].
+    pub fn encode_body(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(2 + self.xml.len());
+        out.extend_from_slice(&self.fmt_type.to_le_bytes());
+        out.extend_from_slice(&self.xml);
+        out
     }
 }
 
@@ -350,6 +366,47 @@ impl SxmlChunk {
     pub fn total_samples(&self) -> u64 {
         self.sub_chunks.iter().map(|s| u64::from(s.n_samples)).sum()
     }
+
+    /// Serialize this `sxml` chunk *body* — the fixed prefix (`fmtType` +
+    /// the 64-bit `subXMLCkTbSize`), the `nSubXMLChunks` count and its
+    /// `SubXMLChunk` records, then the optional `AlignmentPoint` table.
+    ///
+    /// The `subXMLCkTbSize` and per-record `subXMLChunkSize` are derived
+    /// from the actual payload lengths (`4 + Σ(8 + xml.len())` and
+    /// `4 + xml.len()` respectively), so the emitted body is always
+    /// internally consistent and re-parses to an equal [`SxmlChunk`]. The
+    /// `AlignmentPoint` table is emitted only when non-empty, matching the
+    /// "no trailing count when there are no alignment points" rule the
+    /// parser enforces. Exact inverse of [`SxmlChunk::parse`].
+    pub fn encode_body(&self) -> Vec<u8> {
+        // The table region: nSubXMLChunks count + each record.
+        let mut table = Vec::new();
+        table.extend_from_slice(&(self.sub_chunks.len() as u32).to_le_bytes());
+        for sub in &self.sub_chunks {
+            let sub_size = (4 + sub.xml.len()) as u32; // counts nSamples + xml
+            table.extend_from_slice(&sub_size.to_le_bytes());
+            table.extend_from_slice(&sub.n_samples.to_le_bytes());
+            table.extend_from_slice(&sub.xml);
+        }
+
+        let mut out = Vec::with_capacity(SXML_PREFIX_LEN + table.len());
+        out.extend_from_slice(&self.fmt_type.to_le_bytes());
+        let tb_size = table.len() as u64;
+        out.extend_from_slice(&(tb_size as u32).to_le_bytes());
+        out.extend_from_slice(&((tb_size >> 32) as u32).to_le_bytes());
+        out.extend_from_slice(&table);
+
+        if !self.alignment_points.is_empty() {
+            out.extend_from_slice(&(self.alignment_points.len() as u32).to_le_bytes());
+            for ap in &self.alignment_points {
+                out.extend_from_slice(&(ap.byte_offset as u32).to_le_bytes());
+                out.extend_from_slice(&((ap.byte_offset >> 32) as u32).to_le_bytes());
+                out.extend_from_slice(&(ap.n_samples as u32).to_le_bytes());
+                out.extend_from_slice(&((ap.n_samples >> 32) as u32).to_le_bytes());
+            }
+        }
+        out
+    }
 }
 
 #[cfg(test)]
@@ -541,5 +598,61 @@ mod tests {
         body.extend_from_slice(&2u32.to_le_bytes());
         let err = SxmlChunk::parse(&body).unwrap_err();
         assert!(format!("{err}").contains("disagrees with the remaining body length"));
+    }
+
+    #[test]
+    fn axml_encode_body_round_trips() {
+        let c = AxmlChunk::parse(b"<audioFormatExtended/>");
+        assert_eq!(c.encode_body(), b"<audioFormatExtended/>");
+        assert_eq!(AxmlChunk::parse(&c.encode_body()), c);
+    }
+
+    #[test]
+    fn bxml_encode_body_round_trips() {
+        let mut body = Vec::new();
+        body.extend_from_slice(&FMT_TYPE_GZIP.to_le_bytes());
+        body.extend_from_slice(&[0x1f, 0x8b, 0x08, 0x00]);
+        let c = BxmlChunk::parse(&body).unwrap();
+        assert_eq!(c.encode_body(), body);
+        assert_eq!(BxmlChunk::parse(&c.encode_body()).unwrap(), c);
+    }
+
+    #[test]
+    fn sxml_encode_body_round_trips_no_alignment() {
+        let recs = vec![sub_record(48_000, b"<a/>"), sub_record(24_000, b"<bb/>")];
+        let body = sxml_body(FMT_TYPE_UNCOMPRESSED, &recs, &[]);
+        let c = SxmlChunk::parse(&body).unwrap();
+        let encoded = c.encode_body();
+        assert_eq!(encoded, body);
+        assert_eq!(SxmlChunk::parse(&encoded).unwrap(), c);
+    }
+
+    #[test]
+    fn sxml_encode_body_round_trips_with_alignment() {
+        let recs = vec![sub_record(100, b"<x/>")];
+        let aligns = vec![
+            AlignmentPoint {
+                byte_offset: 14,
+                n_samples: 0,
+            },
+            AlignmentPoint {
+                byte_offset: 0x1_0000_0002,
+                n_samples: 0x2_0000_0003,
+            },
+        ];
+        let body = sxml_body(FMT_TYPE_GZIP, &recs, &aligns);
+        let c = SxmlChunk::parse(&body).unwrap();
+        let encoded = c.encode_body();
+        assert_eq!(encoded, body);
+        assert_eq!(SxmlChunk::parse(&encoded).unwrap(), c);
+    }
+
+    #[test]
+    fn sxml_encode_body_zero_sub_chunks() {
+        let body = sxml_body(FMT_TYPE_UNCOMPRESSED, &[], &[]);
+        let c = SxmlChunk::parse(&body).unwrap();
+        let encoded = c.encode_body();
+        assert_eq!(encoded, body);
+        assert_eq!(SxmlChunk::parse(&encoded).unwrap(), c);
     }
 }

@@ -272,6 +272,48 @@ impl InfoList {
             .map(|(_, v)| v.as_str())
     }
 
+    /// Append a `(tag, value)` entry, returning `self` for chaining.
+    ///
+    /// The value is the text alone (no ZSTR terminator); the terminator
+    /// is added on encode. The write-side counterpart of
+    /// [`InfoList::push_chunk`].
+    pub fn push(mut self, tag: InfoTag, value: impl Into<String>) -> Self {
+        self.entries.push((tag, value.into()));
+        self
+    }
+
+    /// Serialize the `LIST INFO` *body* — the `INFO` list-type word
+    /// followed by one `Ixxx` child chunk per entry, in order.
+    ///
+    /// Each child is a ZSTR `INFO` tag: the value bytes plus a `0x00`
+    /// terminator, framed with [`crate::chunk::encode_chunk`] (so an
+    /// odd-length body gets its RIFF pad byte). This is the inverse of
+    /// [`InfoList::collect_from`] for the common all-ASCII case: a list
+    /// built from valid-UTF-8 tag values re-collects to an equal
+    /// `InfoList`. (Values are stored decoded, so a non-UTF-8 source byte
+    /// that became U+FFFD on read does not survive a read→encode→read
+    /// cycle — the normal ASCII / Windows-1252 text path is unaffected.)
+    pub fn encode_list_body(&self) -> Result<Vec<u8>> {
+        let mut out = Vec::new();
+        out.extend_from_slice(b"INFO");
+        for (tag, value) in &self.entries {
+            let mut zstr = value.as_bytes().to_vec();
+            zstr.push(0); // ZSTR terminator
+            crate::chunk::encode_chunk(&mut out, &tag.0, &zstr)?;
+        }
+        Ok(out)
+    }
+
+    /// Serialize the whole `LIST INFO` chunk — the `LIST` header (with the
+    /// computed `ckSize`) wrapping [`InfoList::encode_list_body`]. Append
+    /// directly to a RIFF/WAVE file being muxed.
+    pub fn encode_chunk(&self) -> Result<Vec<u8>> {
+        let body = self.encode_list_body()?;
+        let mut out = Vec::new();
+        crate::chunk::encode_chunk(&mut out, &crate::chunk::FOURCC_LIST, &body)?;
+        Ok(out)
+    }
+
     /// Collect a whole `LIST INFO` sub-tree from a [`crate::Walker`]
     /// already positioned over the `INFO` list body (i.e. constructed
     /// after the caller read the `INFO` list-type with
@@ -449,6 +491,60 @@ mod tests {
         assert_eq!(tag.fourcc(), *b"IMP3");
         assert!(!tag.is_baseline());
         assert_eq!(value, "passthrough");
+    }
+
+    #[test]
+    fn encode_list_body_round_trips_through_collect() {
+        let list = InfoList::new()
+            .push(InfoTag::INAM, "Two Trees")
+            .push(InfoTag::ICMT, "A picture")
+            .push(InfoTag(*b"IMP3"), "passthrough");
+        let body = list.encode_list_body().unwrap();
+        // Wrap the body in a LIST header and re-collect.
+        let mut blob = Vec::new();
+        blob.extend_from_slice(b"LIST");
+        blob.extend_from_slice(&(body.len() as u32).to_le_bytes());
+        blob.extend_from_slice(&body);
+        let mut cur = Cursor::new(blob);
+        let header = crate::chunk::read_chunk_header(&mut cur).unwrap().unwrap();
+        let mut walker = crate::Walker::open_within(&mut cur, &header).unwrap();
+        let collected = InfoList::collect_from(&mut walker).unwrap();
+        assert_eq!(collected, list);
+    }
+
+    #[test]
+    fn encode_chunk_emits_list_header_and_pads_odd_children() {
+        // "Odd" value → ZSTR "Odd\0" (4 bytes, even); "X" → "X\0" (2, even).
+        // Use a 2-char value to force an odd ZSTR body needing a pad.
+        let list = InfoList::new().push(InfoTag::INAM, "Hi");
+        let chunk = list.encode_chunk().unwrap();
+        assert_eq!(&chunk[0..4], b"LIST");
+        // Re-parse the whole chunk back.
+        let mut cur = Cursor::new(chunk);
+        let header = crate::chunk::read_chunk_header(&mut cur).unwrap().unwrap();
+        assert!(header.is_group());
+        let mut walker = crate::Walker::open_within(&mut cur, &header).unwrap();
+        let collected = InfoList::collect_from(&mut walker).unwrap();
+        assert_eq!(collected.get(InfoTag::INAM), Some("Hi"));
+    }
+
+    #[test]
+    fn encode_handles_odd_length_zstr_pad() {
+        // A 2-char value gives a 3-byte ZSTR ("Odd"=3 → "Odd\0"=4 even),
+        // so use a 4-char value → 5-byte ZSTR (odd) to exercise the pad.
+        let list = InfoList::new().push(InfoTag::IART, "Jane");
+        let body = list.encode_list_body().unwrap();
+        // INFO(4) + IART hdr(8) + "Jane\0"(5) + pad(1) = 18.
+        assert_eq!(body.len(), 18);
+        let mut blob = Vec::new();
+        blob.extend_from_slice(b"LIST");
+        blob.extend_from_slice(&(body.len() as u32).to_le_bytes());
+        blob.extend_from_slice(&body);
+        let mut cur = Cursor::new(blob);
+        let header = crate::chunk::read_chunk_header(&mut cur).unwrap().unwrap();
+        let mut walker = crate::Walker::open_within(&mut cur, &header).unwrap();
+        let collected = InfoList::collect_from(&mut walker).unwrap();
+        assert_eq!(collected.get(InfoTag::IART), Some("Jane"));
     }
 
     #[test]
