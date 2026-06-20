@@ -13,6 +13,15 @@ needs — a `ChunkHeader` decoder, a non-recursive [`Walker`] over a
 parent chunk's children, FourCC helpers, and the crate's own `Error` /
 `Result` aliases — plus a growing set of typed chunk-body decoders.
 
+Every typed decoder now has a matching **encoder** (`encode_body` /
+`encode` / `encode_chunk`), the byte-exact inverse of its parser, plus a
+shared `encode_chunk` / `write_chunk_header` framing helper — so the crate
+can **mux** the WAV / BWF / BW64 metadata chunks it parses, not just read
+them. `tests/mux_roundtrip.rs` assembles a full RIFF/WAVE file (and a
+BW64/RF64 file with `ds64` + `chna`) from the encoders alone, then walks it
+back with the public `Walker` and asserts every decoded struct equals the
+encoded source.
+
 The walker is codec-agnostic; the typed decoders stack on top of it.
 Codec-specific chunk bodies not yet covered (`data` / `iXML` / `id3 `)
 are deferred to later work; the `RF64` / `BW64` 64-bit-extended outer
@@ -198,6 +207,26 @@ The wire-format invariants enforced:
   clean-room material, so each loop record is preserved verbatim as a
   24-byte `SampleLoop`; `smpte_offset_parts` unpacks the packed
   `HH:MM:SS:FF` offset.
+
+## Mux (encode) path
+
+The write-side counterpart of every decoder. Each typed struct exposes an
+`encode_body()` that produces exactly the bytes its `parse` consumes; the
+shared [`encode_chunk`] frames a `(FourCC, body)` pair into a complete leaf
+chunk (header + body + the `0x00` pad byte for an odd-length body, `ckSize`
+recording the un-padded length per §1.3) and [`write_chunk_header`] emits a
+bare 8-byte header. The count-prefixed and table-bearing chunks (`cue ` /
+`plst` / `smpl` / `ds64` / `chna` / `sxml`) derive their on-wire counts and
+table sizes from the actual record/payload lengths, so an encoded body is
+always internally consistent and re-parses. The `LIST INFO` / `LIST adtl`
+groups encode as whole chunks via [`InfoList::encode_chunk`] /
+[`AdtlList::encode_chunk`], re-adding ZSTR terminators and framing each
+child. Constructors / builders (`DataSize64::new` / `with_override`,
+`CueChunk::from_points` / `push`, `Playlist::from_segments`,
+`ChannelAllocation::from_records`, `InfoList::push`, `AdtlList::push`) let a
+caller assemble a chunk from scratch rather than only round-trip a parsed
+one. `tests/mux_roundtrip.rs` is the file-level proof: build → walk →
+decode equals the source for both a RIFF/WAVE and a BW64/RF64 file.
 
 ## Standalone build
 

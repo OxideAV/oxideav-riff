@@ -64,6 +64,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   round-trip tests (parse↔encode and, for the LIST chunks, full
   encode→walk→collect round-trips).
 
+- **Round 351 — mux fixture round-trip (`tests/mux_roundtrip.rs`).** The
+  milestone capstone: file-level proof that the new encoders and the
+  existing decoders are exact inverses. `full_wave_file_muxes_and_round_trips`
+  assembles a complete `RIFF` / `WAVE` file — `fmt ` / `fact` / `data` /
+  `cue ` / `LIST INFO` / `LIST adtl` / `smpl` / `inst` / `acid` — purely
+  from the `encode_*` helpers, walks it back with the public `Walker`, and
+  asserts every decoded struct equals the encoded source plus the chunk
+  order. `waveformatextensible_file_round_trips` drives a 5.1 / 24-in-32
+  PCM file through the extensible `fmt ` encoder.
+  `bw64_rf64_file_with_ds64_chna_round_trips` muxes a `BW64` file with a
+  `ds64` 64-bit size table and a `chna` ADM allocation table and re-parses
+  it via the low-level `read_chunk_header` path (the `Walker` is strict on
+  the `RIFF` outer FourCC). 3 fixture tests. **Followup:** a dedicated
+  `Walker::open_rf64` / `open_bw64` constructor would let the 64-bit outer
+  wrappers be walked through the high-level API instead of the manual
+  header loop.
+
 - **Round 340 — BW64 ADM XML-carrier decoders (`axml` / `bxml` / `sxml`).**
   Three typed readers for the *Audio Definition Model* metadata document
   that a BW64 (ADM-carrying) WAV file pairs with the binary `chna` table,

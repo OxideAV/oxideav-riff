@@ -76,7 +76,12 @@
 //! payload), and the structured `sxml` (the `fmtType` + 64-bit
 //! `subXMLCkTbSize` prefix, the `SubXMLChunk` table binding XML spans to
 //! sample counts, and the optional sample-accurate `AlignmentPoint`
-//! seek table) with full table-bound cross-checks.
+//! seek table) with full table-bound cross-checks; round 351 adds the
+//! write-side **mux** path — a shared chunk-header writer
+//! ([`chunk::write_chunk_header`] / [`chunk::encode_chunk`]) plus a
+//! byte-exact `encode_body` / `encode` / `encode_chunk` inverse for every
+//! typed decoder above, capped by the `tests/mux_roundtrip.rs` file-level
+//! build→walk→decode fixture for a full RIFF/WAVE and a BW64/RF64 file.
 //!
 //! ## Wire format (§1.3 of the 1991 spec)
 //!
