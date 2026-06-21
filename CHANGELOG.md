@@ -30,6 +30,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   New public surface: `Silence`, `WaveSegment`, `WaveDataList`,
   `FOURCC_WAVL` / `FOURCC_SLNT` / `FOURCC_DATA`, `SLNT_LEN`. 20 new tests.
 
+- **Round 358 — `wavl` file-level mux→walk→decode fixture.** Extends
+  `tests/mux_roundtrip.rs` with a third complete-file round-trip:
+  `RIFF/WAVE { fmt fact LIST(wavl) }` whose waveform is the scattered
+  `wavl` form (a `data` run, a 1000-sample `slnt` silence, and an
+  odd-length `data` run that exercises the RIFF pad byte), assembled
+  purely from the public `encode_*` helpers, walked back with the public
+  `Walker`, and asserted to re-collect into an equal `WaveDataList` with
+  matching `total_data_bytes` / `total_silent_samples` totals.
+
 - **Round 351 — chunk-encode (mux) path: shared header writer + fixed-width
   body encoders.** The crate's first write-side surface, the byte-exact
   inverse of the existing parsers, so a parsed chunk re-encodes to the same

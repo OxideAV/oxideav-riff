@@ -244,10 +244,13 @@ groups encode as whole chunks via [`InfoList::encode_chunk`] /
 [`AdtlList::encode_chunk`], re-adding ZSTR terminators and framing each
 child. Constructors / builders (`DataSize64::new` / `with_override`,
 `CueChunk::from_points` / `push`, `Playlist::from_segments`,
-`ChannelAllocation::from_records`, `InfoList::push`, `AdtlList::push`) let a
+`ChannelAllocation::from_records`, `InfoList::push`, `AdtlList::push`,
+`WaveDataList::push_data` / `push_silence`) let a
 caller assemble a chunk from scratch rather than only round-trip a parsed
 one. `tests/mux_roundtrip.rs` is the file-level proof: build → walk →
-decode equals the source for both a RIFF/WAVE and a BW64/RF64 file.
+decode equals the source for a plain RIFF/WAVE file, a BW64/RF64 file, and
+a RIFF/WAVE file whose waveform is the scattered `wavl` LIST of `data` /
+`slnt` chunks.
 
 ## Standalone build
 

@@ -20,7 +20,7 @@ use std::io::Read;
 use oxideav_riff::{
     encode_chunk, fourcc_to_string, is_rf64_magic, read_chunk_header, read_form_type, Acid,
     AdtlEntry, AdtlList, ChannelAllocation, CueChunk, CuePoint, DataSize64, Fact, InfoList,
-    InfoTag, Inst, Smpl, Walker, WaveFormat,
+    InfoTag, Inst, Smpl, Walker, WaveDataList, WaveFormat,
 };
 
 /// Wrap an already-serialized LIST *body* (the form-type word + children)
@@ -316,6 +316,94 @@ fn bw64_rf64_file_with_ds64_chna_round_trips() {
         chna_back.by_track_index(1).unwrap().uid_str(),
         Some("ATU_00000001")
     );
+}
+
+/// As [`collect_info_from_blob`] but for a `wavl` wave-data-list chunk.
+fn collect_wavl_from_blob(list_chunk: &[u8]) -> WaveDataList {
+    let mut cur = Cursor::new(list_chunk);
+    let header = read_chunk_header(&mut cur).unwrap().unwrap();
+    let mut walker = Walker::open_within(&mut cur, &header).unwrap();
+    WaveDataList::collect_from(&mut walker).unwrap()
+}
+
+#[test]
+fn wavl_wave_data_list_file_muxes_and_round_trips() {
+    // A WAV file whose waveform is stored as a `wavl` LIST of alternating
+    // `data` (sample) and `slnt` (silence) chunks instead of a single bare
+    // `data` chunk. The spec requires a `fact` chunk in this form; its
+    // `dwSampleLength` carries the total sample count the reader cannot
+    // derive cheaply from the scattered runs and silence counts.
+    let fmt = WaveFormat {
+        format_tag: 1,
+        channels: 1,
+        sample_rate: 48_000,
+        avg_bytes_per_sec: 96_000,
+        block_align: 2,
+        bits_per_sample: 16,
+        extension: Vec::new(),
+        extensible: None,
+    };
+
+    // 6 sample bytes + 1000 silent samples + 5 sample bytes (odd → pad).
+    let mut wavl = WaveDataList::new();
+    wavl.push_data(vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06]);
+    wavl.push_silence(1_000);
+    wavl.push_data(vec![0xAA, 0xBB, 0xCC, 0xDD, 0xEE]); // odd-length run
+    assert_eq!(wavl.total_data_bytes(), 11);
+    assert_eq!(wavl.total_silent_samples(), 1_000);
+
+    // 3 + 1000 + 2 = 1005 mono 16-bit samples total (sample_length is the
+    // per-channel sample count: 11 bytes / 2 bytes-per-sample rounds the
+    // PCM runs to 3 + 2 samples here for the fixture).
+    let fact = Fact {
+        sample_length: 1_005,
+        extra: Vec::new(),
+    };
+
+    // --- Mux: RIFF/WAVE { fmt fact LIST(wavl) }. ---
+    let mut body = Vec::new();
+    body.extend_from_slice(b"WAVE");
+    encode_chunk(&mut body, b"fmt ", &fmt.encode_body()).unwrap();
+    encode_chunk(&mut body, b"fact", &fact.encode_body()).unwrap();
+    body.extend_from_slice(&wavl.encode_chunk().unwrap());
+    let mut file = Vec::new();
+    encode_chunk(&mut file, b"RIFF", &body).unwrap();
+
+    // --- Walk it back and decode each chunk. ---
+    let mut cur = Cursor::new(&file[..]);
+    let mut walker = Walker::open_root(&mut cur).unwrap();
+    assert_eq!(&walker.form_type(), b"WAVE");
+
+    let mut seen = Vec::new();
+    let mut got_fmt = None;
+    let mut got_fact = None;
+    let mut got_wavl = None;
+
+    while let Some(chunk) = walker.read_next().unwrap() {
+        seen.push(fourcc_to_string(&chunk.id));
+        let raw = walker.read_body(&chunk).unwrap();
+        match &chunk.id {
+            b"fmt " => got_fmt = Some(WaveFormat::parse(&raw).unwrap()),
+            b"fact" => got_fact = Some(Fact::parse(&raw).unwrap()),
+            b"LIST" => {
+                assert_eq!(&raw[0..4], b"wavl");
+                let list_chunk = rebuild_chunk(b"LIST", &raw);
+                got_wavl = Some(collect_wavl_from_blob(&list_chunk));
+            }
+            other => panic!("unexpected chunk {other:?}"),
+        }
+    }
+
+    assert_eq!(seen, vec!["fmt ", "fact", "LIST"]);
+    assert_eq!(got_fmt.unwrap(), fmt);
+    assert_eq!(got_fact.unwrap(), fact);
+    let wavl_back = got_wavl.unwrap();
+    assert_eq!(wavl_back, wavl);
+    // The decoded list re-tallies to the same totals (so the odd-length
+    // data run survived its RIFF pad byte intact).
+    assert_eq!(wavl_back.total_data_bytes(), 11);
+    assert_eq!(wavl_back.total_silent_samples(), 1_000);
+    assert_eq!(wavl_back.len(), 3);
 }
 
 /// Build an `AudioId` with NUL-padded fixed-width identifier fields.
