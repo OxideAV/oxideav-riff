@@ -23,8 +23,11 @@ back with the public `Walker` and asserts every decoded struct equals the
 encoded source.
 
 The walker is codec-agnostic; the typed decoders stack on top of it.
-Codec-specific chunk bodies not yet covered (`data` / `iXML` / `id3 `)
-are deferred to later work; the `RF64` / `BW64` 64-bit-extended outer
+The `wavl` LIST of `data` / `slnt` chunks (the scattered waveform-storage
+form) is now collected via the `wavl` decoder; the remaining
+codec-specific chunk bodies not yet covered (the bare-`data` sample
+payload, `iXML`, `id3 `) are deferred to later work; the `RF64` / `BW64`
+64-bit-extended outer
 wrappers are now handled via the `ds64` decoder (EBU Tech 3306), the ADM
 `chna` channel-allocation table via the `chna` decoder (ITU-R BS.2088),
 the ADM XML-carrier chunks (`axml` / `bxml` / `sxml`) via the
@@ -207,6 +210,24 @@ The wire-format invariants enforced:
   clean-room material, so each loop record is preserved verbatim as a
   24-byte `SampleLoop`; `smpte_offset_parts` unpacks the packed
   `HH:MM:SS:FF` offset.
+- **`wavl` wave-data-list + `slnt` silence** ([`WaveDataList`] /
+  [`Silence`] / [`WaveSegment`]) — the alternative *scattered* waveform
+  storage form the spec defines alongside the bare `data` chunk: a `LIST`
+  whose list-type is `wavl`, holding a play-ordered run of `data` (sample)
+  and `slnt` (silence) child chunks. A `slnt` body is the fixed 4-byte
+  `dwSamples` silent-sample count (an off-length body is rejected — the
+  chunk has no extension mechanism); the spec's note that silence is *not*
+  necessarily a zero-sample run (a renderer holds the prior value to avoid
+  a click) is a renderer concern, so only the count is recorded.
+  `WaveDataList::collect_from` walks the LIST into an ordered
+  `Vec<WaveSegment>` (`Data` / `Silence` / verbatim-preserved `Other`
+  vendor segments), with `total_data_bytes` (u64) and `total_silent_samples`
+  (u64, overflow-safe across many runs) for cross-checking against `fmt ` /
+  `fact` — the `fact` chunk being **required** when the waveform lives in a
+  `wavl` LIST. Unrecognised child FourCCs are kept verbatim (the spec's
+  ignore-but-don't-reject rule). The write side mirrors it: `encode_chunk`
+  re-emits a `wavl` LIST that re-collects equal, with each child framed so
+  an odd-length `data` run gets its RIFF pad byte.
 
 ## Mux (encode) path
 
@@ -264,7 +285,9 @@ while let Some(chunk) = walker.read_next().unwrap() {
 - `docs/container/riff/metadata/microsoft-riffmci.pdf` §1–2 — the
   canonical original RIFF + WAV + AVI spec (1991); §2 also carries the
   `CSET` chunk grammar plus the *Country Codes* and *Language and Dialect
-  Codes* tables consumed by the `cset` decoder.
+  Codes* tables consumed by the `cset` decoder, and §2 "Storage of WAVE
+  Data" carries the `<wave-list>` (`wavl`) / `<silence-ck>` (`slnt`)
+  grammar consumed by the `wavl` decoder.
 - `docs/container/riff/metadata/ms-xaudio2-riff.html` — modern
   reformulation of the RIFF wire layout.
 - `docs/container/riff/avi-riff-file-reference.md` — AVI RIFF File

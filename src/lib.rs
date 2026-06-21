@@ -81,7 +81,14 @@
 //! ([`chunk::write_chunk_header`] / [`chunk::encode_chunk`]) plus a
 //! byte-exact `encode_body` / `encode` / `encode_chunk` inverse for every
 //! typed decoder above, capped by the `tests/mux_roundtrip.rs` file-level
-//! build→walk→decode fixture for a full RIFF/WAVE and a BW64/RF64 file.
+//! build→walk→decode fixture for a full RIFF/WAVE and a BW64/RF64 file;
+//! round 358 adds the WAV `wavl` wave-data-list decoder
+//! ([`wavl::WaveDataList`]) and its `slnt` silence segment
+//! ([`wavl::Silence`]) — the alternative scattered storage form in which
+//! the waveform is a `LIST` of `data` (sample) and `slnt` (silent-sample
+//! count) child chunks in play order, with on-wire-order preservation,
+//! `data`-byte / silent-sample totals, verbatim retention of unrecognised
+//! child FourCCs, and a byte-exact `encode_chunk` inverse.
 //!
 //! ## Wire format (§1.3 of the 1991 spec)
 //!
@@ -180,6 +187,7 @@ pub mod subtype;
 pub mod sxml;
 pub mod walk;
 pub mod waveformat;
+pub mod wavl;
 
 pub use acid::{
     Acid, ACID_LEN, FLAG_DISK_BASED, FLAG_HIGH_OCTAVE, FLAG_ONE_SHOT, FLAG_ROOT_NOTE_SET,
@@ -232,4 +240,7 @@ pub use waveformat::{
     ExtensibleFields, Guid, WaveFormat, KSDATAFORMAT_SUBTYPE_WAVEFORMATEX_BASE, WAVE_FORMAT_ADPCM,
     WAVE_FORMAT_ALAW, WAVE_FORMAT_EXTENSIBLE, WAVE_FORMAT_IEEE_FLOAT, WAVE_FORMAT_MULAW,
     WAVE_FORMAT_PCM,
+};
+pub use wavl::{
+    Silence, WaveDataList, WaveSegment, FOURCC_DATA, FOURCC_SLNT, FOURCC_WAVL, SLNT_LEN,
 };

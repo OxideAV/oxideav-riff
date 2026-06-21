@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 358 — WAV `wavl` wave-data-list + `slnt` silence decoder.** The
+  alternative *scattered* waveform-storage form the 1991 RIFF MCI spec
+  defines alongside the bare `data` chunk: a `LIST` whose list-type FourCC
+  is `wavl`, holding a play-ordered sequence of `data` (sample) and `slnt`
+  (silence) child chunks. `wavl::Silence` decodes the fixed 4-byte `slnt`
+  body (the `dwSamples` silent-sample count), rejecting an off-length body
+  (the chunk has no extension mechanism). `wavl::WaveDataList::collect_from`
+  walks a `wavl` LIST into an ordered `Vec<WaveSegment>` (`Data` byte runs /
+  `Silence` sample counts / `Other` preserved-verbatim vendor segments),
+  exposing `total_data_bytes` (u64) and `total_silent_samples` (u64, so a
+  long file's many silence runs can't overflow a single `u32` `dwSamples`)
+  for cross-checking against `fmt ` / `fact`, and honouring the spec's
+  ignore-but-don't-reject rule for unrecognised child FourCCs. The write
+  side mirrors it: `Silence::encode_body` / `encode_chunk` and
+  `WaveDataList::encode_list_body` / `encode_chunk` (plus `push_data` /
+  `push_silence` / `push_segment` / `push_child` builders) emit a `wavl`
+  LIST that re-collects equal, with each child framed through
+  `chunk::encode_chunk` so an odd-length `data` run gets its RIFF pad byte.
+  New public surface: `Silence`, `WaveSegment`, `WaveDataList`,
+  `FOURCC_WAVL` / `FOURCC_SLNT` / `FOURCC_DATA`, `SLNT_LEN`. 20 new tests.
+
 - **Round 351 — chunk-encode (mux) path: shared header writer + fixed-width
   body encoders.** The crate's first write-side surface, the byte-exact
   inverse of the existing parsers, so a parsed chunk re-encodes to the same
