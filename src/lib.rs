@@ -88,7 +88,16 @@
 //! the waveform is a `LIST` of `data` (sample) and `slnt` (silent-sample
 //! count) child chunks in play order, with on-wire-order preservation,
 //! `data`-byte / silent-sample totals, verbatim retention of unrecognised
-//! child FourCCs, and a byte-exact `encode_chunk` inverse.
+//! child FourCCs, and a byte-exact `encode_chunk` inverse; round 361
+//! widens the `LIST INFO` namespace ([`info::InfoTag`]) from the 23
+//! baseline 1991 sub-IDs to also cover the 38 extended production tags
+//! catalogued by ExifTool (`IAS1`–`IAS9` stream languages, the editorial
+//! credits, `IDIT` / `ITRK` / `ISMP`, …) with `is_extended` /
+//! `is_registered` classifiers, and adds the `JUNK` filler-chunk decoder
+//! ([`padding::Junk`], RIFF MCI §2) — verbatim body preservation, the
+//! alignment / zero-fill constructors, the `encode_chunk` inverse, and
+//! the BS.2088-2 §2.5 `ds64`-reservation classifier
+//! ([`padding::Junk::is_ds64_reservation`]).
 //!
 //! ## Wire format (§1.3 of the 1991 spec)
 //!
@@ -181,6 +190,7 @@ pub mod fact;
 pub mod fourcc;
 pub mod info;
 pub mod inst;
+pub mod padding;
 pub mod plst;
 pub mod smpl;
 pub mod subtype;
@@ -223,6 +233,7 @@ pub use fact::{Fact, FACT_MIN_LEN, FOURCC_FACT};
 pub use fourcc::{fourcc_bytes, fourcc_to_string, is_printable_fourcc};
 pub use info::{zstr_bytes, zstr_value, InfoList, InfoTag};
 pub use inst::{Inst, FOURCC_INST, INST_LEN};
+pub use padding::{Junk, DS64_RESERVATION_LEN, FOURCC_JUNK};
 pub use plst::{PlaySegment, Playlist, FOURCC_PLST, PLAY_SEGMENT_LEN};
 pub use smpl::{
     SampleLoop, Smpl, FOURCC_SMPL, SAMPLE_LOOP_LEN, SMPL_HEADER_LEN, SMPTE_FORMAT_NONE,
