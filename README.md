@@ -76,12 +76,24 @@ The wire-format invariants enforced:
   description. The MAT 2.0 Atmos and Media-Foundation `MFAudioFormat_*`
   namespaces are deferred.
 - **`LIST INFO` metadata** ([`InfoList`] / [`InfoTag`]) — the 23
-  baseline `INFO` sub-IDs the 1991 spec registers, each carrying its
-  field name via `InfoTag::label`, plus a ZSTR body decoder
-  (`zstr_bytes` / `zstr_value`) and `InfoList::collect_from` which
-  walks a `LIST INFO` sub-tree into an ordered `(tag, value)` list
-  (duplicates and unknown vendor codes preserved, per the spec's
-  "ignore but don't reject" rule).
+  baseline `INFO` sub-IDs the 1991 spec registers **plus the 38
+  extended production tags** ExifTool's RIFF Tags table catalogues
+  (the `IAS1`–`IAS9` audio-stream languages, the editorial credits
+  `ICNM` / `ICDS` / `IMUS` / `ISTR`, the `IDIT` digitization time,
+  `ITRK` track number, `ISMP` time-code, …), each carrying its field
+  name via `InfoTag::label` and classified by `InfoTag::is_baseline` /
+  `is_extended` / `is_registered`. A ZSTR body decoder
+  (`zstr_bytes` / `zstr_value`) and `InfoList::collect_from` walk a
+  `LIST INFO` sub-tree into an ordered `(tag, value)` list (duplicates
+  and unknown vendor codes preserved, per the spec's "ignore but don't
+  reject" rule).
+- **`JUNK` filler chunk** ([`Junk`]) — the RIFF MCI §2 general-purpose
+  padding / filler chunk a writer inserts for data alignment or, sized
+  ≥ 28 bytes, reserves up front so the file can be promoted to RF64 /
+  BW64 in place (rename `JUNK` → `ds64`; BS.2088-2 §2.5). The body is
+  preserved verbatim for byte-exact mux round-trip; `zeroed` /
+  `ds64_reservation` constructors, an `is_ds64_reservation` capacity
+  classifier, and an `encode_chunk` inverse round out the surface.
 - **BWF `bext` broadcast extension** ([`BroadcastExtension`]) — the
   602-byte fixed prefix (Description / Originator / OriginatorReference
   / OriginationDate / OriginationTime / 64-bit TimeReference / Version /

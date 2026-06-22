@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 361 — extended `LIST INFO` namespace + `JUNK` filler chunk.**
+  `InfoTag` grows from the 23 baseline `INFO` sub-IDs the 1991 RIFF MCI
+  spec registers to also cover the 38 extended tags ExifTool's RIFF Tags
+  table catalogues for production WAV / AVI files — the `IAS1`–`IAS9`
+  audio-stream-language set, the editorial credits (`ICNM`
+  Cinematographer / `ICDS` Costume Designer / `IMUS` Music By / `ISTR`
+  Starring / `IPRO` Produced By / …), `IDIT` digitization date-time,
+  `ITRK` track number, `ISMP` time-code, `IENC` Encoded By, `ICCP` ICC
+  profile, the More-Info URL set, and the rest. Each is a typed constant
+  with a `label()` sourced from the staged ExifTool field-name catalogue
+  (a DATA table), gathered in `InfoTag::EXTENDED`, and classified by the
+  new `InfoTag::is_extended` / `is_registered` predicates (alongside the
+  existing `is_baseline`). The ZSTR decode + `InfoList` collect / encode
+  path is unchanged, so the extended tags decode and re-mux byte-for-byte
+  through the existing round-trip.
+- A new `padding` module adds the `JUNK` filler-chunk decoder /
+  encoder (`Junk`). `JUNK` is the RIFF MCI §2 general-purpose
+  padding / filler chunk ("a space filler of arbitrary size … contains
+  no relevant data") a writer inserts for data alignment (AVI RIFF File
+  Reference) or, sized ≥ 28 bytes, reserves up front so a 32-bit
+  RIFF/WAVE file can be promoted to RF64 / BW64 in place by renaming
+  `JUNK` → `ds64` (BS.2088-2 §2.5). The body is preserved verbatim for a
+  byte-exact mux round-trip; `Junk::zeroed` / `ds64_reservation`
+  constructors, the `is_ds64_reservation` capacity classifier, and an
+  `encode_chunk` inverse complete the surface. New public surface:
+  `Junk`, `FOURCC_JUNK`, `DS64_RESERVATION_LEN`. The
+  `tests/mux_roundtrip.rs` full-WAVE fixture now muxes an odd-length
+  `JUNK` alignment chunk mid-file plus the `IENC` / `ITRK` extended INFO
+  tags and asserts both survive the walk-back.
 - **Round 358 — WAV `wavl` wave-data-list + `slnt` silence decoder.** The
   alternative *scattered* waveform-storage form the 1991 RIFF MCI spec
   defines alongside the bare `data` chunk: a `LIST` whose list-type FourCC

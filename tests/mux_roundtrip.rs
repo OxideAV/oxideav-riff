@@ -20,7 +20,7 @@ use std::io::Read;
 use oxideav_riff::{
     encode_chunk, fourcc_to_string, is_rf64_magic, read_chunk_header, read_form_type, Acid,
     AdtlEntry, AdtlList, ChannelAllocation, CueChunk, CuePoint, DataSize64, Fact, InfoList,
-    InfoTag, Inst, Smpl, Walker, WaveDataList, WaveFormat,
+    InfoTag, Inst, Junk, Smpl, Walker, WaveDataList, WaveFormat,
 };
 
 /// Wrap an already-serialized LIST *body* (the form-type word + children)
@@ -101,7 +101,13 @@ fn full_wave_file_muxes_and_round_trips() {
     let info = InfoList::new()
         .push(InfoTag::INAM, "Two Trees")
         .push(InfoTag::IART, "Jane Doe") // odd ZSTR → exercises a pad byte
-        .push(InfoTag::ISFT, "oxideav");
+        .push(InfoTag::ISFT, "oxideav")
+        .push(InfoTag::IENC, "oxideav-riff") // extended namespace tag
+        .push(InfoTag::ITRK, "7");
+
+    // An alignment-filler chunk with an odd body, to exercise JUNK
+    // passthrough + the trailing RIFF pad byte mid-file.
+    let junk = Junk::from_body(&[0xCA, 0xFE, 0xBA]);
 
     let adtl = AdtlList::new()
         .push(AdtlEntry::Label {
@@ -146,6 +152,7 @@ fn full_wave_file_muxes_and_round_trips() {
     encode_chunk(&mut body, b"fmt ", &fmt.encode_body()).unwrap();
     encode_chunk(&mut body, b"fact", &fact.encode_body()).unwrap();
     encode_chunk(&mut body, b"data", &data).unwrap();
+    body.extend_from_slice(&junk.encode_chunk().unwrap());
     encode_chunk(&mut body, b"cue ", &cue.encode_body()).unwrap();
     body.extend_from_slice(&info.encode_chunk().unwrap());
     body.extend_from_slice(&adtl.encode_chunk().unwrap());
@@ -170,6 +177,7 @@ fn full_wave_file_muxes_and_round_trips() {
     let mut got_smpl = None;
     let mut got_inst = None;
     let mut got_acid = None;
+    let mut got_junk = None;
 
     while let Some(chunk) = walker.read_next().unwrap() {
         seen.push(fourcc_to_string(&chunk.id));
@@ -178,6 +186,7 @@ fn full_wave_file_muxes_and_round_trips() {
             b"fmt " => got_fmt = Some(WaveFormat::parse(&raw).unwrap()),
             b"fact" => got_fact = Some(Fact::parse(&raw).unwrap()),
             b"data" => got_data = Some(raw),
+            b"JUNK" => got_junk = Some(Junk::from_body(&raw)),
             b"cue " => got_cue = Some(CueChunk::parse(&raw).unwrap()),
             b"smpl" => got_smpl = Some(Smpl::parse(&raw).unwrap()),
             b"inst" => got_inst = Some(Inst::parse(&raw).unwrap()),
@@ -200,13 +209,19 @@ fn full_wave_file_muxes_and_round_trips() {
 
     assert_eq!(
         seen,
-        vec!["fmt ", "fact", "data", "cue ", "LIST", "LIST", "smpl", "inst", "acid"]
+        vec!["fmt ", "fact", "data", "JUNK", "cue ", "LIST", "LIST", "smpl", "inst", "acid"]
     );
     assert_eq!(got_fmt.unwrap(), fmt);
     assert_eq!(got_fact.unwrap(), fact);
     assert_eq!(got_data.unwrap(), data);
+    assert_eq!(got_junk.unwrap(), junk);
     assert_eq!(got_cue.unwrap(), cue);
-    assert_eq!(got_info.unwrap(), info);
+    let got_info = got_info.unwrap();
+    assert_eq!(got_info, info);
+    // The extended-namespace tags survive the read→mux→read cycle.
+    assert_eq!(got_info.get(InfoTag::IENC), Some("oxideav-riff"));
+    assert_eq!(got_info.get(InfoTag::ITRK), Some("7"));
+    assert!(InfoTag::IENC.is_extended());
     assert_eq!(got_adtl.unwrap(), adtl);
     assert_eq!(got_smpl.unwrap(), smpl);
     assert_eq!(got_inst.unwrap(), inst);
