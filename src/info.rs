@@ -37,25 +37,38 @@
 //!
 //! The 23 **baseline** `INFO` sub-IDs the 1991 spec registers, each
 //! exposed as an [`InfoTag`] FourCC constant with its spec semantics in
-//! the doc comment. An `InfoList` preserves the on-wire order of the
-//! tags it collected and keeps any unrecognised four-character codes
-//! verbatim (the spec explicitly allows new chunk IDs and instructs an
-//! application to ignore — but not reject — IDs it does not understand).
+//! the doc comment, plus the 38 **extended** sub-IDs ExifTool's RIFF
+//! Tags table catalogues for production WAV / AVI files (the audio-
+//! stream-language `IAS1`–`IAS9` set, the editorial credits
+//! `ICNM` / `ICDS` / `IMUS` / `ISTR` / …, the `IDIT` digitization time,
+//! `ITRK` track number, `ISMP` time-code, and so on). An `InfoList`
+//! preserves the on-wire order of the tags it collected and keeps any
+//! unrecognised four-character codes verbatim (the spec explicitly
+//! allows new chunk IDs and instructs an application to ignore — but not
+//! reject — IDs it does not understand).
 //!
 //! ## Clean-room sources
 //!
 //! - `docs/container/riff/metadata/microsoft-riffmci.pdf` §2 —
 //!   "INFO List Chunk" (the registered global `INFO` form-type and the
 //!   baseline tag table) + "NULL-Terminated String (ZSTR) Format".
+//! - `docs/container/riff/metadata/exiftool-riff-tags.html` — the
+//!   field-name catalogue (a DATA table) for the extended `INFO` tags
+//!   beyond the 1991 baseline.
 
 use crate::error::{Error, Result};
 
 /// A registered four-character `INFO` sub-ID.
 ///
 /// The associated constants are the 23 baseline tags the 1991 RIFF MCI
-/// spec registers for the `INFO` list. The wrapped `[u8; 4]` is the
-/// raw FourCC; [`InfoTag::label`] maps the registered ones to their
-/// short human-readable name and returns `None` for any other code.
+/// spec registers for the `INFO` list ([`InfoTag::BASELINE`]) plus the
+/// 38 extended tags ExifTool's RIFF Tags table catalogues for
+/// production WAV / AVI files ([`InfoTag::EXTENDED`]). The wrapped
+/// `[u8; 4]` is the raw FourCC; [`InfoTag::label`] maps any registered
+/// code to its short human-readable name and returns `None` for any
+/// other (vendor / unknown) code. Use [`InfoTag::is_baseline`] /
+/// [`InfoTag::is_extended`] / [`InfoTag::is_registered`] to classify a
+/// code.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct InfoTag(pub [u8; 4]);
 
@@ -121,6 +134,99 @@ impl InfoTag {
     /// Technician. The technician who digitized the subject file.
     pub const ITCH: InfoTag = InfoTag(*b"ITCH");
 
+    // ---------------------------------------------------------------
+    // Extended `INFO` namespace.
+    //
+    // Tags beyond the 23 the 1991 RIFF MCI spec registers, seen widely
+    // in production WAV / AVI files and catalogued in ExifTool's RIFF
+    // Tags table (`docs/container/riff/metadata/exiftool-riff-tags.html`).
+    // These are *not* in the 1991 baseline; [`InfoTag::is_baseline`]
+    // returns `false` for them while [`InfoTag::is_extended`] returns
+    // `true`. Their bodies follow the same ZSTR convention as the
+    // baseline tags (with the documented exception of `ICCP`, whose body
+    // is a raw ICC profile blob rather than text — the label still
+    // resolves but a consumer should not ZSTR-decode it).
+    // ---------------------------------------------------------------
+
+    /// First Language. The primary audio-stream language (`IAS1`–`IAS9`
+    /// enumerate up to nine parallel-stream languages).
+    pub const IAS1: InfoTag = InfoTag(*b"IAS1");
+    /// Second Language. See [`InfoTag::IAS1`].
+    pub const IAS2: InfoTag = InfoTag(*b"IAS2");
+    /// Third Language. See [`InfoTag::IAS1`].
+    pub const IAS3: InfoTag = InfoTag(*b"IAS3");
+    /// Fourth Language. See [`InfoTag::IAS1`].
+    pub const IAS4: InfoTag = InfoTag(*b"IAS4");
+    /// Fifth Language. See [`InfoTag::IAS1`].
+    pub const IAS5: InfoTag = InfoTag(*b"IAS5");
+    /// Sixth Language. See [`InfoTag::IAS1`].
+    pub const IAS6: InfoTag = InfoTag(*b"IAS6");
+    /// Seventh Language. See [`InfoTag::IAS1`].
+    pub const IAS7: InfoTag = InfoTag(*b"IAS7");
+    /// Eighth Language. See [`InfoTag::IAS1`].
+    pub const IAS8: InfoTag = InfoTag(*b"IAS8");
+    /// Ninth Language. See [`InfoTag::IAS1`].
+    pub const IAS9: InfoTag = InfoTag(*b"IAS9");
+    /// Base URL. The base address for the file's More-Info links.
+    pub const IBSU: InfoTag = InfoTag(*b"IBSU");
+    /// Default Audio Stream. Which audio stream plays by default.
+    pub const ICAS: InfoTag = InfoTag(*b"ICAS");
+    /// ICC Profile. A raw embedded ICC colour profile (binary body, not
+    /// a ZSTR).
+    pub const ICCP: InfoTag = InfoTag(*b"ICCP");
+    /// Costume Designer.
+    pub const ICDS: InfoTag = InfoTag(*b"ICDS");
+    /// Cinematographer.
+    pub const ICNM: InfoTag = InfoTag(*b"ICNM");
+    /// Country. The country of origin.
+    pub const ICNT: InfoTag = InfoTag(*b"ICNT");
+    /// Date/Time Original. The original digitization date-time.
+    pub const IDIT: InfoTag = InfoTag(*b"IDIT");
+    /// Distributed By.
+    pub const IDST: InfoTag = InfoTag(*b"IDST");
+    /// Edited By.
+    pub const IEDT: InfoTag = InfoTag(*b"IEDT");
+    /// Encoded By. The name of the person or tool that encoded the file.
+    pub const IENC: InfoTag = InfoTag(*b"IENC");
+    /// Logo URL.
+    pub const ILGU: InfoTag = InfoTag(*b"ILGU");
+    /// Logo Icon URL.
+    pub const ILIU: InfoTag = InfoTag(*b"ILIU");
+    /// Language. The content language.
+    pub const ILNG: InfoTag = InfoTag(*b"ILNG");
+    /// More-Info Banner Image.
+    pub const IMBI: InfoTag = InfoTag(*b"IMBI");
+    /// More-Info Banner URL.
+    pub const IMBU: InfoTag = InfoTag(*b"IMBU");
+    /// More-Info Text.
+    pub const IMIT: InfoTag = InfoTag(*b"IMIT");
+    /// More-Info URL.
+    pub const IMIU: InfoTag = InfoTag(*b"IMIU");
+    /// Music By.
+    pub const IMUS: InfoTag = InfoTag(*b"IMUS");
+    /// Production Designer.
+    pub const IPDS: InfoTag = InfoTag(*b"IPDS");
+    /// Produced By.
+    pub const IPRO: InfoTag = InfoTag(*b"IPRO");
+    /// Ripped By.
+    pub const IRIP: InfoTag = InfoTag(*b"IRIP");
+    /// Rating.
+    pub const IRTD: InfoTag = InfoTag(*b"IRTD");
+    /// Secondary Genre.
+    pub const ISGN: InfoTag = InfoTag(*b"ISGN");
+    /// Time Code. An SMPTE time code string.
+    pub const ISMP: InfoTag = InfoTag(*b"ISMP");
+    /// Production Studio.
+    pub const ISTD: InfoTag = InfoTag(*b"ISTD");
+    /// Starring. The featured performers.
+    pub const ISTR: InfoTag = InfoTag(*b"ISTR");
+    /// Track Number.
+    pub const ITRK: InfoTag = InfoTag(*b"ITRK");
+    /// Watermark URL.
+    pub const IWMU: InfoTag = InfoTag(*b"IWMU");
+    /// Written By.
+    pub const IWRI: InfoTag = InfoTag(*b"IWRI");
+
     /// All 23 baseline tags the 1991 RIFF MCI spec registers, in the
     /// order the spec lists them.
     pub const BASELINE: [InfoTag; 23] = [
@@ -149,6 +255,50 @@ impl InfoTag {
         Self::ITCH,
     ];
 
+    /// The extended `INFO` tags catalogued by ExifTool's RIFF Tags
+    /// table — tags seen in production WAV / AVI files that are *not*
+    /// part of the 1991 baseline. Listed in ascending FourCC order.
+    pub const EXTENDED: [InfoTag; 38] = [
+        Self::IAS1,
+        Self::IAS2,
+        Self::IAS3,
+        Self::IAS4,
+        Self::IAS5,
+        Self::IAS6,
+        Self::IAS7,
+        Self::IAS8,
+        Self::IAS9,
+        Self::IBSU,
+        Self::ICAS,
+        Self::ICCP,
+        Self::ICDS,
+        Self::ICNM,
+        Self::ICNT,
+        Self::IDIT,
+        Self::IDST,
+        Self::IEDT,
+        Self::IENC,
+        Self::ILGU,
+        Self::ILIU,
+        Self::ILNG,
+        Self::IMBI,
+        Self::IMBU,
+        Self::IMIT,
+        Self::IMIU,
+        Self::IMUS,
+        Self::IPDS,
+        Self::IPRO,
+        Self::IRIP,
+        Self::IRTD,
+        Self::ISGN,
+        Self::ISMP,
+        Self::ISTD,
+        Self::ISTR,
+        Self::ITRK,
+        Self::IWMU,
+        Self::IWRI,
+    ];
+
     /// The raw four-character code of this tag.
     pub const fn fourcc(&self) -> [u8; 4] {
         self.0
@@ -160,36 +310,92 @@ impl InfoTag {
         Self::BASELINE.contains(self)
     }
 
-    /// Short human-readable label for a baseline tag, or `None` for a
+    /// `true` if this is one of the extended (non-baseline) `INFO` tags
+    /// catalogued in ExifTool's RIFF Tags table.
+    pub fn is_extended(&self) -> bool {
+        Self::EXTENDED.contains(self)
+    }
+
+    /// `true` if this tag is registered — either a 1991 baseline tag or
+    /// a catalogued extended tag. A `false` result means the FourCC is
+    /// a vendor / unknown code (still preserved verbatim by
+    /// [`InfoList`], but with no [`InfoTag::label`]).
+    pub fn is_registered(&self) -> bool {
+        self.is_baseline() || self.is_extended()
+    }
+
+    /// Short human-readable label for a registered tag, or `None` for a
     /// vendor / unknown four-character code.
     ///
-    /// The labels are the registered field names from the 1991 RIFF
-    /// MCI "INFO List Chunk" table.
+    /// The baseline labels are the registered field names from the 1991
+    /// RIFF MCI "INFO List Chunk" table; the extended labels are the
+    /// field names ExifTool's RIFF Tags table records for the
+    /// production-seen tags outside that baseline.
     pub fn label(&self) -> Option<&'static str> {
-        Some(match self.0 {
-            b if b == *b"IARL" => "Archival Location",
-            b if b == *b"IART" => "Artist",
-            b if b == *b"ICMS" => "Commissioned",
-            b if b == *b"ICMT" => "Comments",
-            b if b == *b"ICOP" => "Copyright",
-            b if b == *b"ICRD" => "Creation Date",
-            b if b == *b"ICRP" => "Cropped",
-            b if b == *b"IDIM" => "Dimensions",
-            b if b == *b"IDPI" => "Dots Per Inch",
-            b if b == *b"IENG" => "Engineer",
-            b if b == *b"IGNR" => "Genre",
-            b if b == *b"IKEY" => "Keywords",
-            b if b == *b"ILGT" => "Lightness",
-            b if b == *b"IMED" => "Medium",
-            b if b == *b"INAM" => "Name",
-            b if b == *b"IPLT" => "Palette Setting",
-            b if b == *b"IPRD" => "Product",
-            b if b == *b"ISBJ" => "Subject",
-            b if b == *b"ISFT" => "Software",
-            b if b == *b"ISHP" => "Sharpness",
-            b if b == *b"ISRC" => "Source",
-            b if b == *b"ISRF" => "Source Form",
-            b if b == *b"ITCH" => "Technician",
+        Some(match &self.0 {
+            // 1991 RIFF MCI baseline.
+            b"IARL" => "Archival Location",
+            b"IART" => "Artist",
+            b"ICMS" => "Commissioned",
+            b"ICMT" => "Comments",
+            b"ICOP" => "Copyright",
+            b"ICRD" => "Creation Date",
+            b"ICRP" => "Cropped",
+            b"IDIM" => "Dimensions",
+            b"IDPI" => "Dots Per Inch",
+            b"IENG" => "Engineer",
+            b"IGNR" => "Genre",
+            b"IKEY" => "Keywords",
+            b"ILGT" => "Lightness",
+            b"IMED" => "Medium",
+            b"INAM" => "Name",
+            b"IPLT" => "Palette Setting",
+            b"IPRD" => "Product",
+            b"ISBJ" => "Subject",
+            b"ISFT" => "Software",
+            b"ISHP" => "Sharpness",
+            b"ISRC" => "Source",
+            b"ISRF" => "Source Form",
+            b"ITCH" => "Technician",
+            // Extended namespace (ExifTool RIFF Tags table).
+            b"IAS1" => "First Language",
+            b"IAS2" => "Second Language",
+            b"IAS3" => "Third Language",
+            b"IAS4" => "Fourth Language",
+            b"IAS5" => "Fifth Language",
+            b"IAS6" => "Sixth Language",
+            b"IAS7" => "Seventh Language",
+            b"IAS8" => "Eighth Language",
+            b"IAS9" => "Ninth Language",
+            b"IBSU" => "Base URL",
+            b"ICAS" => "Default Audio Stream",
+            b"ICCP" => "ICC Profile",
+            b"ICDS" => "Costume Designer",
+            b"ICNM" => "Cinematographer",
+            b"ICNT" => "Country",
+            b"IDIT" => "Date/Time Original",
+            b"IDST" => "Distributed By",
+            b"IEDT" => "Edited By",
+            b"IENC" => "Encoded By",
+            b"ILGU" => "Logo URL",
+            b"ILIU" => "Logo Icon URL",
+            b"ILNG" => "Language",
+            b"IMBI" => "More Info Banner Image",
+            b"IMBU" => "More Info Banner URL",
+            b"IMIT" => "More Info Text",
+            b"IMIU" => "More Info URL",
+            b"IMUS" => "Music By",
+            b"IPDS" => "Production Designer",
+            b"IPRO" => "Produced By",
+            b"IRIP" => "Ripped By",
+            b"IRTD" => "Rating",
+            b"ISGN" => "Secondary Genre",
+            b"ISMP" => "Time Code",
+            b"ISTD" => "Production Studio",
+            b"ISTR" => "Starring",
+            b"ITRK" => "Track Number",
+            b"IWMU" => "Watermark URL",
+            b"IWRI" => "Written By",
             _ => return None,
         })
     }
@@ -369,7 +575,70 @@ mod tests {
     fn unknown_tag_has_no_label_and_is_not_baseline() {
         let t = InfoTag(*b"IMP3");
         assert!(!t.is_baseline());
+        assert!(!t.is_extended());
+        assert!(!t.is_registered());
         assert!(t.label().is_none());
+    }
+
+    #[test]
+    fn extended_table_has_38_unique_tags_disjoint_from_baseline() {
+        assert_eq!(InfoTag::EXTENDED.len(), 38);
+        // No duplicates within EXTENDED.
+        for (i, a) in InfoTag::EXTENDED.iter().enumerate() {
+            for b in &InfoTag::EXTENDED[i + 1..] {
+                assert_ne!(a, b, "duplicate extended tag {:?}", a.0);
+            }
+        }
+        // No overlap with BASELINE.
+        for e in InfoTag::EXTENDED {
+            assert!(
+                !InfoTag::BASELINE.contains(&e),
+                "extended tag {:?} also in baseline",
+                e.0
+            );
+        }
+    }
+
+    #[test]
+    fn every_extended_tag_has_a_label_and_is_extended_not_baseline() {
+        for tag in InfoTag::EXTENDED {
+            assert!(tag.is_extended(), "{:?} not is_extended", tag.0);
+            assert!(!tag.is_baseline(), "{:?} reported baseline", tag.0);
+            assert!(tag.is_registered());
+            assert!(tag.label().is_some(), "missing label for {:?}", tag.0);
+        }
+    }
+
+    #[test]
+    fn extended_labels_match_catalogue() {
+        assert_eq!(InfoTag::IAS1.label(), Some("First Language"));
+        assert_eq!(InfoTag::IDIT.label(), Some("Date/Time Original"));
+        assert_eq!(InfoTag::ITRK.label(), Some("Track Number"));
+        assert_eq!(InfoTag::ISMP.label(), Some("Time Code"));
+        assert_eq!(InfoTag::IENC.label(), Some("Encoded By"));
+        assert_eq!(InfoTag::ICCP.label(), Some("ICC Profile"));
+    }
+
+    #[test]
+    fn extended_tag_decodes_and_round_trips_through_collect() {
+        // A LIST INFO carrying an extended tag must decode, classify, and
+        // re-collect to an equal list.
+        let list = InfoList::new()
+            .push(InfoTag::IENC, "OxideAV")
+            .push(InfoTag::ITRK, "7")
+            .push(InfoTag::IAS1, "eng");
+        let body = list.encode_list_body().unwrap();
+        let mut blob = Vec::new();
+        blob.extend_from_slice(b"LIST");
+        blob.extend_from_slice(&(body.len() as u32).to_le_bytes());
+        blob.extend_from_slice(&body);
+        let mut cur = Cursor::new(blob);
+        let header = crate::chunk::read_chunk_header(&mut cur).unwrap().unwrap();
+        let mut walker = crate::Walker::open_within(&mut cur, &header).unwrap();
+        let collected = InfoList::collect_from(&mut walker).unwrap();
+        assert_eq!(collected, list);
+        assert_eq!(collected.get(InfoTag::IENC), Some("OxideAV"));
+        assert!(collected.entries()[0].0.is_extended());
     }
 
     #[test]
