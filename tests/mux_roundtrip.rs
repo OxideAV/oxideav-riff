@@ -333,6 +333,92 @@ fn bw64_rf64_file_with_ds64_chna_round_trips() {
     );
 }
 
+#[test]
+fn bw64_file_walks_through_the_open_bw64_constructor() {
+    // A self-consistent BW64 file: the outer 32-bit ckSize carries the
+    // 0xFFFFFFFF sentinel and the mandatory ds64 chunk's riffSize equals
+    // the real body length, so the high-level Walker::open_bw64 resolves
+    // the 64-bit size and yields the post-ds64 chunks directly. This is
+    // the constructor that replaces the manual read_chunk_header loop the
+    // sibling fixture documents.
+    let fmt = WaveFormat {
+        format_tag: 1,
+        channels: 2,
+        sample_rate: 48_000,
+        avg_bytes_per_sec: 192_000,
+        block_align: 4,
+        bits_per_sample: 16,
+        extension: Vec::new(),
+        extensible: None,
+    };
+    let fmt_chunk = {
+        let mut v = Vec::new();
+        encode_chunk(&mut v, b"fmt ", &fmt.encode_body()).unwrap();
+        v
+    };
+    let chna = ChannelAllocation::from_records(
+        1,
+        1,
+        vec![mk_audio_id(
+            1,
+            b"ATU_00000001",
+            b"AT_00010001_01",
+            b"AP_00010002",
+        )],
+    );
+    let chna_chunk = {
+        let mut v = Vec::new();
+        encode_chunk(&mut v, b"chna", &chna.encode_body()).unwrap();
+        v
+    };
+    let data = [0x11u8, 0x22, 0x33, 0x44];
+    let data_chunk = {
+        let mut v = Vec::new();
+        encode_chunk(&mut v, b"data", &data).unwrap();
+        v
+    };
+
+    // Compute the real body size = WAVE(4) + ds64 chunk + fmt + chna + data.
+    // ds64 is a fixed 28-byte body → 8 + 28 = 36 framed bytes.
+    let body_len = 4 + (8 + 28) + fmt_chunk.len() + chna_chunk.len() + data_chunk.len();
+    let ds64 = DataSize64::new(body_len as u64, data.len() as u64, 1, Vec::new());
+
+    // Assemble the BW64 file with the outer sentinel size.
+    let mut file = Vec::new();
+    file.extend_from_slice(b"BW64");
+    file.extend_from_slice(&0xFFFF_FFFFu32.to_le_bytes()); // sentinel
+    file.extend_from_slice(b"WAVE");
+    encode_chunk(&mut file, b"ds64", &ds64.encode_body()).unwrap();
+    file.extend_from_slice(&fmt_chunk);
+    file.extend_from_slice(&chna_chunk);
+    file.extend_from_slice(&data_chunk);
+
+    // Walk it through the high-level constructor.
+    let mut cur = Cursor::new(&file[..]);
+    let mut walker = Walker::open_bw64(&mut cur).unwrap();
+    assert_eq!(&walker.form_type(), b"WAVE");
+    // The constructor resolved the 64-bit size from ds64.
+    assert_eq!(walker.data_size_64().unwrap().riff_size, body_len as u64);
+
+    // ds64 is already consumed; the first yielded chunk is fmt.
+    let c = walker.read_next().unwrap().unwrap();
+    assert_eq!(&c.id, b"fmt ");
+    let got_fmt = WaveFormat::parse(&walker.read_body(&c).unwrap()).unwrap();
+    assert_eq!(got_fmt, fmt);
+
+    let c = walker.read_next().unwrap().unwrap();
+    assert_eq!(&c.id, b"chna");
+    let got_chna = ChannelAllocation::parse(&walker.read_body(&c).unwrap()).unwrap();
+    assert_eq!(got_chna, chna);
+
+    let c = walker.read_next().unwrap().unwrap();
+    assert_eq!(&c.id, b"data");
+    assert_eq!(walker.read_body(&c).unwrap(), data);
+
+    // Budget exactly satisfied.
+    assert!(walker.read_next().unwrap().is_none());
+}
+
 /// As [`collect_info_from_blob`] but for a `wavl` wave-data-list chunk.
 fn collect_wavl_from_blob(list_chunk: &[u8]) -> WaveDataList {
     let mut cur = Cursor::new(list_chunk);

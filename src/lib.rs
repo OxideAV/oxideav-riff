@@ -105,7 +105,12 @@
 //! the `id3 ` / `ID3 ` embedded-ID3v2-tag carrier ([`id3::Id3Chunk`],
 //! verbatim tag preservation + a lightweight [`id3::Id3v2Header`]
 //! recognizer, no frame decoding) and the `PAD ` padding FourCC
-//! ([`padding::FOURCC_PAD`]).
+//! ([`padding::FOURCC_PAD`]); round 365 also adds the high-level
+//! 64-bit walker constructors [`walk::Walker::open_rf64`] /
+//! [`walk::Walker::open_bw64`], which read the mandatory `ds64` chunk to
+//! resolve the `0xFFFFFFFF`-sentinel outer size and walk an `RF64` /
+//! `BW64` file through the public `Walker` API
+//! ([`walk::Walker::data_size_64`] exposes the parsed `ds64`).
 //!
 //! ## Wire format (§1.3 of the 1991 spec)
 //!

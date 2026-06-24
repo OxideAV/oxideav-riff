@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 365 — `Walker::open_rf64` / `open_bw64` high-level 64-bit
+  walker constructors.** The r351 followup: the `RF64` / `BW64`
+  64-bit-extended outer wrappers can now be walked through the public
+  `Walker` API instead of the manual `read_chunk_header` header loop the
+  BW64 mux fixture documented. `Walker::open_rf64` reads + validates the
+  `RF64` / `BW64` outer header (whose 32-bit `ckSize` carries the
+  `0xFFFFFFFF` sentinel), reads the form-type word, then reads the
+  mandatory `ds64` chunk that must immediately follow it, resolves the
+  real 64-bit outer size from the `ds64` `riffSize`, and returns a walker
+  whose payload budget is that resolved size — positioned at the *first
+  chunk after `ds64`* so the next `read_next()` yields it. The parsed
+  `ds64` is exposed via `Walker::data_size_64()` so a consumer can resolve
+  any later `0xFFFFFFFF` `data` / `fact` / table-listed chunk size.
+  `open_bw64` is the intent-documenting alias for the ADM-carrying `BW64`
+  magic (both magics accepted by either). The base `open_root` stays
+  strict on `RIFF`. A new `tests/mux_roundtrip.rs` fixture
+  (`bw64_file_walks_through_the_open_bw64_constructor`) muxes a
+  self-consistent `BW64` file — outer sentinel size + a `ds64` whose
+  `riffSize` equals the real body length — and walks `fmt ` / `chna` /
+  `data` back through `open_bw64`. 5 new walker unit tests + 1 fixture.
+  Sourced from `docs/container/riff/metadata/ebu-tech3306-v1.pdf` §A.2 +
+  `…-v2.pdf` §1 (the RF64/BW64 outer wrapper + the `ds64`-first /
+  `riffSize` resolution rule).
 - **Round 365 — `id3 ` / `ID3 ` embedded-ID3v2-tag carrier + `PAD `
   padding chunk.** A new `id3` module gives RIFF/WAVE (and AVI) files the
   container-level carriage of an embedded ID3v2 metadata tag. `Id3Chunk`
@@ -633,8 +656,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Known gaps (deferred to later rounds)
 
-- `RF64` / `BW64` 64-bit-extended outer wrapper + `ds64`
-  side-table (EBU Tech 3306 §4).
+- ~~`RF64` / `BW64` 64-bit-extended outer wrapper + `ds64`
+  side-table (EBU Tech 3306 §4).~~ Resolved: the `ds64` decoder landed in
+  round 314 and the high-level `Walker::open_rf64` / `open_bw64`
+  constructors in round 365.
 - The Media-Foundation `MFAudioFormat_*` parallel namespace and the
   MAT 2.0 Atmos IEC 61937 variants (the round-295 `KsSubtype` catalogue
   covers the WAVEFORMATEX-derived + base IEC 61937 families).

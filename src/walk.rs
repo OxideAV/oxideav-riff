@@ -35,19 +35,25 @@
 //!     constructs a child [`Walker`] over `payload_len - 4` bytes
 //!     starting just past the form-type word.
 //!
-//! ## Round-1 scope
+//! ## 64-bit (`RF64` / `BW64`) entry points
 //!
-//! This walker covers the **32-bit base RIFF** wire format only
-//! (`RIFF` outer chunk, 32-bit little-endian `ckSize`). The
-//! `RF64` / `BW64` 64-bit-extended forms (EBU Tech 3306 §4) need a
-//! `ds64` side-table read before sizes become trustworthy; that
-//! extension is deferred to a later round and will live as a
-//! companion `walk_rf64` constructor rather than mutating the base
-//! walker.
+//! The base [`Walker::open_root`] is strict on the `RIFF` FourCC. The
+//! `RF64` / `BW64` 64-bit-extended forms (EBU Tech 3306 / BS.2088) carry
+//! the `0xFFFFFFFF` sentinel in the outer 32-bit `ckSize` field; the real
+//! 64-bit RIFF size lives in the mandatory `ds64` chunk that must
+//! immediately follow the form-type word. [`Walker::open_rf64`] reads that
+//! `ds64` chunk, resolves the outer size from its `riffSize`, and returns
+//! a walker positioned at the *first chunk after `ds64`* (with the
+//! parsed [`crate::ds64::DataSize64`] available via
+//! [`Walker::data_size_64`] so a consumer can resolve any `0xFFFFFFFF`
+//! `data` / `fact` / table-listed chunk sizes it later encounters).
+//! [`Walker::open_bw64`] is the alias for the ADM-carrying `BW64` magic;
+//! both accept either magic.
 
 use std::io::{Read, Seek, SeekFrom};
 
 use crate::chunk::{read_chunk_header, read_form_type, ChunkHeader};
+use crate::ds64::{is_rf64_magic, DataSize64, FOURCC_DS64};
 use crate::error::{Error, Result};
 
 /// One child chunk yielded by [`Walker::read_next`].
@@ -107,6 +113,11 @@ pub struct Walker<'r, R: Read + Seek + ?Sized> {
     /// Form-type / list-type of the parent group chunk (`WAVE`,
     /// `AVI `, `INFO`, …).
     form_type: [u8; 4],
+    /// The parsed `ds64` chunk, present only when the walker was opened
+    /// over an `RF64` / `BW64` outer wrapper via [`Walker::open_rf64`].
+    /// Carries the 64-bit `riffSize` / `dataSize` / `sampleCount` plus
+    /// the per-chunk size-override table.
+    data_size_64: Option<DataSize64>,
 }
 
 impl<'r, R: Read + Seek + ?Sized> Walker<'r, R> {
@@ -139,7 +150,91 @@ impl<'r, R: Read + Seek + ?Sized> Walker<'r, R> {
             // ckSize budget.
             consumed: 4,
             form_type,
+            data_size_64: None,
         })
+    }
+
+    /// Open an `RF64` / `BW64` 64-bit-extended outer wrapper.
+    ///
+    /// The outer 8-byte header carries the `RF64` (or ADM-carrying
+    /// `BW64`) FourCC and the `0xFFFFFFFF` size sentinel; the *real*
+    /// 64-bit RIFF size lives in the mandatory `ds64` chunk that must
+    /// immediately follow the form-type word (EBU Tech 3306 / BS.2088).
+    /// This constructor:
+    ///
+    /// 1. reads + validates the outer `RF64` / `BW64` header,
+    /// 2. reads the 4-byte form type (`WAVE`),
+    /// 3. reads the `ds64` chunk (header + body), resolving the outer
+    ///    `riffSize`, and
+    /// 4. returns a walker whose payload budget is that resolved 64-bit
+    ///    size, positioned at the *first chunk after `ds64`* so the next
+    ///    [`Walker::read_next`] yields it.
+    ///
+    /// The parsed `ds64` is available via [`Walker::data_size_64`] so the
+    /// consumer can resolve any later `0xFFFFFFFF` `data` / `fact` /
+    /// table-listed chunk size.
+    ///
+    /// Errors if the outer FourCC is neither `RF64` nor `BW64`, if the
+    /// first chunk is not `ds64`, or if the resolved `riffSize` is
+    /// smaller than the bytes already consumed (form type + `ds64`).
+    pub fn open_rf64(r: &'r mut R) -> Result<Self> {
+        r.seek(SeekFrom::Start(0))?;
+        let header = read_chunk_header(r)?
+            .ok_or_else(|| Error::invalid("RF64: empty input, no outer chunk header"))?;
+        if !is_rf64_magic(&header.id) {
+            return Err(Error::invalid(
+                "RF64: outer chunk is neither 'RF64' nor 'BW64'",
+            ));
+        }
+        if header.size < 4 {
+            return Err(Error::invalid(
+                "RF64: outer ckSize < 4 — no room for form type",
+            ));
+        }
+        let form_type = read_form_type(r)?;
+
+        // The ds64 chunk MUST be the first chunk after the form type.
+        let ds64_header = read_chunk_header(r)?
+            .ok_or_else(|| Error::invalid("RF64: missing mandatory 'ds64' chunk"))?;
+        if ds64_header.id != FOURCC_DS64 {
+            return Err(Error::invalid(
+                "RF64: first chunk after the form type is not 'ds64'",
+            ));
+        }
+        let mut ds64_body = vec![0u8; ds64_header.size as usize];
+        r.read_exact(&mut ds64_body)?;
+        if ds64_header.size & 1 == 1 {
+            let mut pad = [0u8; 1];
+            r.read_exact(&mut pad)?;
+        }
+        let ds64 = DataSize64::parse(&ds64_body)?;
+
+        // The resolved outer payload size (riffSize) is the budget; it
+        // counts everything after the outer 8-byte header, i.e. the
+        // form-type word + the ds64 chunk + every following chunk.
+        let payload_len = ds64.riff_size;
+        // Bytes consumed so far inside that payload: the 4-byte form type
+        // plus the ds64 chunk header + padded body.
+        let consumed = 4 + 8 + ds64_header.padded_size();
+        if consumed > payload_len {
+            return Err(Error::invalid(
+                "RF64: ds64 riffSize is smaller than the form-type + ds64 prologue",
+            ));
+        }
+        Ok(Self {
+            inner: r,
+            payload_len,
+            consumed,
+            form_type,
+            data_size_64: Some(ds64),
+        })
+    }
+
+    /// Alias for [`Walker::open_rf64`] named for the ADM-carrying `BW64`
+    /// magic. Both magics are accepted by either constructor; this name
+    /// documents intent at the call site.
+    pub fn open_bw64(r: &'r mut R) -> Result<Self> {
+        Self::open_rf64(r)
     }
 
     /// Start a walker over the body of an already-located group
@@ -169,12 +264,22 @@ impl<'r, R: Read + Seek + ?Sized> Walker<'r, R> {
             payload_len: header.size as u64,
             consumed: 4,
             form_type,
+            data_size_64: None,
         })
     }
 
     /// Form-type / list-type FourCC of the parent group chunk.
     pub const fn form_type(&self) -> [u8; 4] {
         self.form_type
+    }
+
+    /// The parsed `ds64` chunk, if this walker was opened over an `RF64`
+    /// / `BW64` outer wrapper via [`Walker::open_rf64`]. `None` for a
+    /// plain 32-bit `RIFF` walker. Use it to resolve any `0xFFFFFFFF`
+    /// `data` / `fact` / table-listed chunk size encountered while
+    /// walking.
+    pub fn data_size_64(&self) -> Option<&DataSize64> {
+        self.data_size_64.as_ref()
     }
 
     /// Total payload length of the parent chunk (its `ckSize`).
@@ -400,6 +505,109 @@ mod tests {
         let err = walker.read_next().unwrap_err();
         let msg = format!("{err}");
         assert!(msg.contains("truncated parent"), "{msg}");
+    }
+
+    /// Build a minimal `ds64` chunk body (28-byte prefix, empty table)
+    /// declaring the given riff/data/sample sizes.
+    fn ds64_body(riff_size: u64, data_size: u64, sample_count: u64) -> Vec<u8> {
+        let mut v = Vec::new();
+        v.extend_from_slice(&riff_size.to_le_bytes());
+        v.extend_from_slice(&data_size.to_le_bytes());
+        v.extend_from_slice(&sample_count.to_le_bytes());
+        v.extend_from_slice(&0u32.to_le_bytes()); // tableLength = 0
+        v
+    }
+
+    /// `RF64`/`WAVE { ds64 fmt(4) data(4) }`, with the outer + data
+    /// ckSize fields set to the 0xFFFFFFFF sentinel.
+    fn synthetic_rf64(magic: &[u8; 4]) -> Vec<u8> {
+        let mut v = Vec::new();
+        // body after outer header: WAVE(4) + ds64 hdr(8)+body(28)
+        //   + fmt hdr(8)+body(4) + data hdr(8)+body(4) = 64
+        let riff_size: u64 = 4 + 8 + 28 + 8 + 4 + 8 + 4;
+        v.extend_from_slice(magic);
+        v.extend_from_slice(&0xFFFF_FFFFu32.to_le_bytes()); // outer sentinel
+        v.extend_from_slice(b"WAVE");
+        // ds64
+        v.extend_from_slice(b"ds64");
+        v.extend_from_slice(&28u32.to_le_bytes());
+        v.extend_from_slice(&ds64_body(riff_size, 4, 1));
+        // fmt
+        v.extend_from_slice(b"fmt ");
+        v.extend_from_slice(&4u32.to_le_bytes());
+        v.extend_from_slice(&[1, 0, 2, 0]);
+        // data
+        v.extend_from_slice(b"data");
+        v.extend_from_slice(&4u32.to_le_bytes());
+        v.extend_from_slice(&[9, 8, 7, 6]);
+        v
+    }
+
+    #[test]
+    fn open_rf64_resolves_size_and_yields_post_ds64_chunks() {
+        let bytes = synthetic_rf64(b"RF64");
+        let mut cur = Cursor::new(bytes);
+        let mut walker = Walker::open_rf64(&mut cur).unwrap();
+        assert_eq!(&walker.form_type(), b"WAVE");
+        // ds64 is consumed by the constructor and exposed.
+        let ds64 = walker.data_size_64().expect("ds64 parsed");
+        assert_eq!(ds64.riff_size, 64);
+        assert_eq!(ds64.data_size, 4);
+        assert_eq!(ds64.sample_count, 1);
+
+        // First yielded chunk is the fmt that follows ds64.
+        let fmt = walker.read_next().unwrap().unwrap();
+        assert_eq!(&fmt.id, b"fmt ");
+        let body = walker.read_body(&fmt).unwrap();
+        assert_eq!(body, vec![1, 0, 2, 0]);
+
+        let data = walker.read_next().unwrap().unwrap();
+        assert_eq!(&data.id, b"data");
+        let body = walker.read_body(&data).unwrap();
+        assert_eq!(body, vec![9, 8, 7, 6]);
+
+        // Budget exactly satisfied.
+        assert!(walker.read_next().unwrap().is_none());
+    }
+
+    #[test]
+    fn open_bw64_accepts_the_adm_magic() {
+        let bytes = synthetic_rf64(b"BW64");
+        let mut cur = Cursor::new(bytes);
+        let mut walker = Walker::open_bw64(&mut cur).unwrap();
+        assert_eq!(&walker.form_type(), b"WAVE");
+        assert_eq!(walker.data_size_64().unwrap().riff_size, 64);
+        let fmt = walker.read_next().unwrap().unwrap();
+        assert_eq!(&fmt.id, b"fmt ");
+    }
+
+    #[test]
+    fn open_rf64_rejects_plain_riff_magic() {
+        let mut bytes = synthetic_rf64(b"RF64");
+        bytes[0..4].copy_from_slice(b"RIFF");
+        let mut cur = Cursor::new(bytes);
+        let err = Walker::open_rf64(&mut cur).unwrap_err();
+        assert!(format!("{err}").contains("neither 'RF64' nor 'BW64'"));
+    }
+
+    #[test]
+    fn open_rf64_rejects_missing_ds64() {
+        // Replace the ds64 FourCC with something else.
+        let mut bytes = synthetic_rf64(b"RF64");
+        // Outer hdr(8) + WAVE(4) = offset 12 is the first chunk FourCC.
+        bytes[12..16].copy_from_slice(b"junk");
+        let mut cur = Cursor::new(bytes);
+        let err = Walker::open_rf64(&mut cur).unwrap_err();
+        assert!(format!("{err}").contains("not 'ds64'"));
+    }
+
+    #[test]
+    fn open_root_still_rejects_rf64_magic() {
+        // The base constructor stays strict on RIFF.
+        let bytes = synthetic_rf64(b"RF64");
+        let mut cur = Cursor::new(bytes);
+        let err = Walker::open_root(&mut cur).unwrap_err();
+        assert!(format!("{err}").contains("not 'RIFF'"));
     }
 
     #[test]

@@ -60,6 +60,15 @@ The wire-format invariants enforced:
 - **FourCC rendering** — `fourcc_to_string()` escapes non-printable
   bytes as `\xNN` so debug dumps of malformed files stay readable;
   `is_printable_fourcc()` is a cheap up-front garbage gate.
+- **64-bit `RF64` / `BW64` entry points** — `Walker::open_root` is strict
+  on the `RIFF` FourCC; the 64-bit-extended forms carry the `0xFFFFFFFF`
+  sentinel in the outer 32-bit `ckSize`, with the real size in the
+  mandatory `ds64` chunk. `Walker::open_rf64` (and its `open_bw64` alias
+  for the ADM-carrying magic) reads that `ds64` chunk, resolves the outer
+  size from its `riffSize`, and returns a walker positioned at the first
+  chunk *after* `ds64`, with the parsed `ds64` reachable via
+  `Walker::data_size_64()` so the consumer can resolve any later
+  `0xFFFFFFFF` `data` / `fact` / table-listed chunk size.
 
 ## Typed chunk-body decoders
 
