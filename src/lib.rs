@@ -180,6 +180,7 @@
 pub mod acid;
 pub mod adtl;
 pub mod bext;
+pub mod channels;
 pub mod chna;
 pub mod chunk;
 pub mod cset;
@@ -210,6 +211,10 @@ pub use adtl::{
 pub use bext::{
     BroadcastExtension, Loudness, BEXT_PREFIX_LEN, DESCRIPTION_LEN, ORIGINATION_DATE_LEN,
     ORIGINATION_TIME_LEN, ORIGINATOR_LEN, ORIGINATOR_REFERENCE_LEN, RESERVED_LEN, UMID_LEN,
+};
+pub use channels::{
+    ChannelMask, SpeakerPosition, StandardLayout, SPEAKER_ALL, SPEAKER_RESERVED_MASK,
+    SPEAKER_STANDARD_MASK,
 };
 pub use chna::{
     AudioId, ChannelAllocation, AUDIO_ID_LEN, CHNA_PREFIX_LEN, FOURCC_CHNA, PACK_REF_LEN,

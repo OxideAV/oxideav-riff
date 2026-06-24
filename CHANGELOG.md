@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 365 — `WAVEFORMATEXTENSIBLE` `dwChannelMask` speaker-position
+  decoding.** A new `channels` module decomposes the 32-bit
+  `dwChannelMask` speaker-assignment bitmap a `WAVEFORMATEXTENSIBLE`
+  `fmt ` descriptor carries into the typed speaker positions it names.
+  `SpeakerPosition` enumerates the 18 standard `SPEAKER_*` positions
+  (`FrontLeft` … `TopBackRight`, each whose discriminant is the
+  `dwChannelMask` bit it occupies) plus the `SPEAKER_ALL` catch-all flag,
+  with `symbolic_name()` (`SPEAKER_FRONT_LEFT`, …), `short_label()`
+  (`FL` / `FR` / `LFE` / …), `bit()` and `from_bit()` accessors.
+  `ChannelMask` is the typed view over a raw mask: `positions()` returns
+  the named discrete positions **in ascending bit order — the in-file
+  channel order**, `position_for_channel(i)` / `channel_for_position(p)`
+  give the bidirectional channel-index ↔ speaker mapping a renderer needs,
+  `channel_count()` counts only the discrete standard bits (excluding
+  `SPEAKER_ALL` and the reserved 18..=30 region, which `is_all()` /
+  `has_reserved_bits()` classify), and `standard_layout()` recognises the
+  spec's named layouts (`StandardLayout`: Mono / Stereo / 2.1 / Quad /
+  5.1-back `0x3F` / 5.1-side `0x60F` / 7.1 `0x63F`). `from_positions()`
+  builds a mask, `is_consistent_with_channels()` / `validate_for_channels()`
+  cross-check the named-position count against `nChannels` (lenient read
+  vs strict authoring). `WaveFormat` gains `channel_mask()`,
+  `standard_layout()`, and `channel_mask_matches_channels()` accessors
+  bridging the decoded `fmt ` descriptor to the new view. New public
+  surface: `SpeakerPosition`, `ChannelMask`, `StandardLayout`,
+  `SPEAKER_ALL`, `SPEAKER_STANDARD_MASK`, `SPEAKER_RESERVED_MASK`.
+  13 new tests. Sourced from
+  `docs/container/riff/waveformatextensible/README.md` (the
+  `dwChannelMask` bit-assignment table, the bit-order channel rule, and
+  the standard-layout table).
 - **Round 361 — extended `LIST INFO` namespace + `JUNK` filler chunk.**
   `InfoTag` grows from the 23 baseline `INFO` sub-IDs the 1991 RIFF MCI
   spec registers to also cover the 38 extended tags ExifTool's RIFF Tags

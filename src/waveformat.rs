@@ -316,10 +316,44 @@ impl WaveFormat {
     /// for an extensible descriptor). Returns `None` for non-extensible
     /// formats. The spec recommends this equal
     /// [`WaveFormat::channels`].
+    ///
+    /// Note this counts **every** set bit, including the `SPEAKER_ALL`
+    /// flag and any reserved bits; for the discrete-speaker count use
+    /// [`WaveFormat::channel_mask`]`().channel_count()`.
     pub fn channel_mask_count(&self) -> Option<u32> {
         self.extensible
             .as_ref()
             .map(|e| e.channel_mask.count_ones())
+    }
+
+    /// The decoded [`crate::channels::ChannelMask`] for a
+    /// `WAVEFORMATEXTENSIBLE` descriptor — the typed view over the
+    /// `dwChannelMask` speaker-position bitmap (named positions, in-file
+    /// channel order, standard-layout recognition). Returns `None` for a
+    /// non-extensible descriptor (which carries no channel mask).
+    pub fn channel_mask(&self) -> Option<crate::channels::ChannelMask> {
+        self.extensible
+            .as_ref()
+            .map(|e| crate::channels::ChannelMask::new(e.channel_mask))
+    }
+
+    /// Recognise this descriptor's `dwChannelMask` as one of the standard
+    /// channel layouts ([`crate::channels::StandardLayout`]). Returns
+    /// `None` for a non-extensible descriptor or a non-standard mask.
+    pub fn standard_layout(&self) -> Option<crate::channels::StandardLayout> {
+        self.channel_mask().and_then(|m| m.standard_layout())
+    }
+
+    /// `true` if the descriptor is extensible and its `dwChannelMask`'s
+    /// discrete-speaker count agrees with [`WaveFormat::channels`] (the
+    /// spec-recommended invariant). An empty or `SPEAKER_ALL` mask, which
+    /// makes no positional claim, is treated as consistent. Returns
+    /// `false` for a non-extensible descriptor (no mask to check).
+    pub fn channel_mask_matches_channels(&self) -> bool {
+        match self.channel_mask() {
+            Some(m) => m.is_consistent_with_channels(self.channels),
+            None => false,
+        }
     }
 
     /// Serialize this `fmt ` chunk *body*.

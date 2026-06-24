@@ -67,6 +67,24 @@ The wire-format invariants enforced:
   union, `dwChannelMask`, the 16-bit mixed-endian `SubFormat` GUID, and
   the `DEFINE_WAVEFORMATEX_GUID` sub-format → legacy `wFormatTag`
   resolver. Over-running `cbSize` is rejected, not truncated.
+- **`dwChannelMask` speaker-position decoding** ([`ChannelMask`] /
+  [`SpeakerPosition`] / [`StandardLayout`]) — the typed view over a
+  `WAVEFORMATEXTENSIBLE` channel-assignment bitmap. `SpeakerPosition`
+  names the 18 standard `SPEAKER_*` positions (each variant's discriminant
+  is the mask bit it occupies) plus the `SPEAKER_ALL` flag, with symbolic
+  (`SPEAKER_FRONT_LEFT`) and short (`FL` / `LFE` / `TBR`) labels.
+  `ChannelMask::positions()` returns the named positions **in ascending
+  bit order — the in-file channel order**, and
+  `position_for_channel` / `channel_for_position` give the bidirectional
+  channel-index ↔ speaker mapping; `channel_count()` counts only the
+  discrete standard bits (excluding `SPEAKER_ALL` and the reserved
+  18..=30 region, classified by `is_all` / `has_reserved_bits`).
+  `standard_layout()` recognises the spec's named masks (Mono / Stereo /
+  2.1 / Quad / 5.1-back / 5.1-side / 7.1), and
+  `is_consistent_with_channels` / `validate_for_channels` cross-check the
+  named-position count against `nChannels`. `WaveFormat::channel_mask()` /
+  `standard_layout()` / `channel_mask_matches_channels()` bridge the
+  decoded descriptor to the view.
 - **`KSDATAFORMAT_SUBTYPE_*` GUID catalogue** ([`KsSubtype`]) — a
   classifier that takes a decoded `SubFormat` GUID and identifies its
   family: the `WAVEFORMATEX`-derived subtypes (`…_PCM` /
@@ -311,7 +329,10 @@ while let Some(chunk) = walker.read_next().unwrap() {
   codec-format-ID registry consumed by the `fmt ` decoder.
 - `docs/container/riff/waveformatextensible/` — the
   `WAVEFORMATEX(TENSIBLE)` field layout, the `DEFINE_WAVEFORMATEX_GUID`
-  resolver, and the named-GUID + IEC 61937 catalogues for `KsSubtype`.
+  resolver, the named-GUID + IEC 61937 catalogues for `KsSubtype`, and
+  (`README.md`) the `dwChannelMask` `SPEAKER_*` bit-assignment table, the
+  bit-order channel rule, and the standard-layout table consumed by the
+  `channels` decoder.
 - `docs/container/riff/metadata/ebu-tech3285-bwf.pdf` — EBU Tech 3285
   v2, the source for the `bext` decoder.
 - `docs/container/riff/metadata/ebu-tech3306-v1.pdf` §A.2 +
