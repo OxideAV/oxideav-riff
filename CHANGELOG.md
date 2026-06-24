@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 365 — `id3 ` / `ID3 ` embedded-ID3v2-tag carrier + `PAD `
+  padding chunk.** A new `id3` module gives RIFF/WAVE (and AVI) files the
+  container-level carriage of an embedded ID3v2 metadata tag. `Id3Chunk`
+  preserves the chunk body — a complete, self-contained ID3v2 tag — **verbatim**
+  (`tag_bytes()` hands it straight to an ID3v2 decoder such as
+  `oxideav-id3`; this crate does **not** decode frames, which would be
+  tag/codec work rather than container work) and recognises the lower-case
+  `id3 ` and upper-case `ID3 ` chunk spellings (`is_id3_fourcc`,
+  `encode_chunk_with` preserving the exact source spelling for a byte-exact
+  round-trip). A lightweight `Id3v2Header` recognizer decodes the 10-byte
+  ID3v2 header common to all v2 versions — magic / version / flags (the
+  unsynchronisation / extended-header / experimental / footer bits) and the
+  **sync-safe** 28-bit tag `size` (`parse_id3v2_header` /
+  `build_id3v2_header`, with `total_tag_len()` accounting for the optional
+  v2.4 footer) — so a caller can validate the carriage and route without
+  this crate growing an ID3 frame parser; an unrecognised or short body is
+  preserved rather than rejected. The `padding` module gains the `PAD `
+  FourCC (`FOURCC_PAD`) — the other ignore-on-read alignment chunk the
+  metadata catalogue lists alongside `JUNK` — with `is_padding_fourcc`
+  recognising both and `Junk::encode_chunk_with` letting a `PAD ` body be
+  re-muxed under its own spelling. New public surface: `Id3Chunk`,
+  `Id3v2Header`, `FOURCC_ID3`, `FOURCC_ID3_UPPER`, `ID3V2_MAGIC`,
+  `ID3V2_HEADER_LEN`, the `ID3_FLAG_*` constants, `is_id3_fourcc`,
+  `parse_id3v2_header`, `build_id3v2_header`, `FOURCC_PAD`,
+  `is_padding_fourcc`. 15 new tests. Sourced from
+  `docs/container/riff/metadata/README.md` (the `id3 ` / `PAD ` chunk
+  catalogue) and `docs/container/id3/README.md` (the 10-byte ID3v2 header +
+  sync-safe-integer layout).
 - **Round 365 — `WAVEFORMATEXTENSIBLE` `dwChannelMask` speaker-position
   decoding.** A new `channels` module decomposes the 32-bit
   `dwChannelMask` speaker-assignment bitmap a `WAVEFORMATEXTENSIBLE`

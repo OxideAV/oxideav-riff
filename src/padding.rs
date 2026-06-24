@@ -43,6 +43,19 @@ use crate::error::Result;
 /// The `JUNK` filler chunk FourCC.
 pub const FOURCC_JUNK: [u8; 4] = *b"JUNK";
 
+/// The `PAD ` padding chunk FourCC — the other general-purpose padding /
+/// alignment chunk a RIFF reader ignores alongside `JUNK` (the metadata
+/// catalogue's "`JUNK` / `PAD ` → ignore" rule). Semantically identical
+/// to `JUNK`: a writer emits it to align a following chunk on a boundary,
+/// and a reader skips its contents.
+pub const FOURCC_PAD: [u8; 4] = *b"PAD ";
+
+/// `true` if `fourcc` is one of the two ignore-on-read padding chunk
+/// identifiers (`JUNK` or `PAD `).
+pub const fn is_padding_fourcc(fourcc: &[u8; 4]) -> bool {
+    matches!(fourcc, b"JUNK" | b"PAD ")
+}
+
 /// Minimum `JUNK` body length, in bytes, for a chunk reserved to be
 /// rewritten in place as a `ds64` (the 28-byte minimal `ds64` body:
 /// `riffSize` + `dataSize` + `sampleCount`, each `u64`, plus the 4-byte
@@ -118,8 +131,16 @@ impl Junk {
     /// trailing RIFF pad byte. Append directly to a RIFF file being
     /// muxed.
     pub fn encode_chunk(&self) -> Result<Vec<u8>> {
+        self.encode_chunk_with(&FOURCC_JUNK)
+    }
+
+    /// Serialize the whole padding chunk under a caller-chosen FourCC —
+    /// pass [`FOURCC_JUNK`] or [`FOURCC_PAD`] to preserve the exact
+    /// spelling a source file used for a byte-exact round-trip. Both are
+    /// ignore-on-read padding; the body is framed identically.
+    pub fn encode_chunk_with(&self, fourcc: &[u8; 4]) -> Result<Vec<u8>> {
         let mut out = Vec::new();
-        crate::chunk::encode_chunk(&mut out, &FOURCC_JUNK, &self.filler)?;
+        crate::chunk::encode_chunk(&mut out, fourcc, &self.filler)?;
         Ok(out)
     }
 }
@@ -217,5 +238,32 @@ mod tests {
     fn ds64_reservation_filler_is_zero() {
         let j = Junk::ds64_reservation();
         assert!(j.filler.iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn pad_fourcc_is_recognised() {
+        assert_eq!(FOURCC_PAD, *b"PAD ");
+        assert!(is_padding_fourcc(b"PAD "));
+        assert!(is_padding_fourcc(b"JUNK"));
+        assert!(!is_padding_fourcc(b"data"));
+        assert!(!is_padding_fourcc(b"PAD\0"));
+        // PAD must never collide with the reserved group IDs.
+        assert_ne!(FOURCC_PAD, FOURCC_RIFF);
+        assert_ne!(FOURCC_PAD, FOURCC_LIST);
+    }
+
+    #[test]
+    fn encode_chunk_with_pad_fourcc() {
+        let j = Junk::zeroed(4);
+        let chunk = j.encode_chunk_with(&FOURCC_PAD).unwrap();
+        assert_eq!(&chunk[0..4], b"PAD ");
+        assert_eq!(&chunk[4..8], &4u32.to_le_bytes());
+        // Same framing as JUNK: header(8) + body(4).
+        assert_eq!(chunk.len(), 12);
+
+        let mut cur = Cursor::new(chunk);
+        let header = read_chunk_header(&mut cur).unwrap().unwrap();
+        assert_eq!(header.id, FOURCC_PAD);
+        assert_eq!(header.size, 4);
     }
 }

@@ -26,7 +26,9 @@ The walker is codec-agnostic; the typed decoders stack on top of it.
 The `wavl` LIST of `data` / `slnt` chunks (the scattered waveform-storage
 form) is now collected via the `wavl` decoder; the remaining
 codec-specific chunk bodies not yet covered (the bare-`data` sample
-payload, `iXML`, `id3 `) are deferred to later work; the `RF64` / `BW64`
+payload, `iXML`) are deferred to later work; the embedded-ID3v2-tag
+`id3 ` / `ID3 ` chunk is now carried verbatim via the `id3` decoder; the
+`RF64` / `BW64`
 64-bit-extended outer
 wrappers are now handled via the `ds64` decoder (EBU Tech 3306), the ADM
 `chna` channel-allocation table via the `chna` decoder (ITU-R BS.2088),
@@ -105,13 +107,30 @@ The wire-format invariants enforced:
   `LIST INFO` sub-tree into an ordered `(tag, value)` list (duplicates
   and unknown vendor codes preserved, per the spec's "ignore but don't
   reject" rule).
-- **`JUNK` filler chunk** ([`Junk`]) — the RIFF MCI §2 general-purpose
-  padding / filler chunk a writer inserts for data alignment or, sized
-  ≥ 28 bytes, reserves up front so the file can be promoted to RF64 /
-  BW64 in place (rename `JUNK` → `ds64`; BS.2088-2 §2.5). The body is
-  preserved verbatim for byte-exact mux round-trip; `zeroed` /
-  `ds64_reservation` constructors, an `is_ds64_reservation` capacity
-  classifier, and an `encode_chunk` inverse round out the surface.
+- **`JUNK` / `PAD ` filler chunks** ([`Junk`]) — the RIFF MCI §2
+  general-purpose padding / filler chunks a writer inserts for data
+  alignment or, sized ≥ 28 bytes, reserves up front so the file can be
+  promoted to RF64 / BW64 in place (rename `JUNK` → `ds64`; BS.2088-2
+  §2.5). The body is preserved verbatim for byte-exact mux round-trip;
+  `zeroed` / `ds64_reservation` constructors, an `is_ds64_reservation`
+  capacity classifier, and an `encode_chunk` inverse round out the
+  surface. The metadata catalogue's other ignore-on-read padding FourCC,
+  `PAD ` (`FOURCC_PAD`), is recognised by `is_padding_fourcc` and
+  re-muxable under its own spelling via `encode_chunk_with`.
+- **`id3 ` / `ID3 ` embedded ID3v2 tag** ([`Id3Chunk`] / [`Id3v2Header`])
+  — the RIFF carriage of an ID3v2 metadata tag (the Microsoft-allowed
+  namespacing for legacy MP3-tagging compatibility). The chunk body is a
+  complete, self-contained ID3v2 tag, preserved **verbatim** so
+  `tag_bytes()` hands it straight to an ID3v2 decoder (`oxideav-id3`) —
+  this crate does **not** decode frames (tag/codec work, not container
+  work). A lightweight recognizer decodes the 10-byte ID3v2 header
+  (`parse_id3v2_header`): magic, version, flags (unsynchronisation /
+  extended-header / experimental / footer bits) and the **sync-safe**
+  28-bit tag `size`, with `total_tag_len()` accounting for the optional
+  v2.4 footer. Both the lower-case `id3 ` and upper-case `ID3 ` spellings
+  are recognised (`is_id3_fourcc`) and round-trip byte-exact
+  (`encode_chunk` / `encode_chunk_with`); an unrecognised or short body is
+  preserved rather than rejected.
 - **BWF `bext` broadcast extension** ([`BroadcastExtension`]) — the
   602-byte fixed prefix (Description / Originator / OriginatorReference
   / OriginationDate / OriginationTime / 64-bit TimeReference / Version /
@@ -359,7 +378,12 @@ while let Some(chunk) = walker.read_next().unwrap() {
   `inst` 7-byte / `smpl` 36-byte + N × 24 size summary; the source for the
   `inst` / `smpl` decoders.
 - `docs/container/riff/metadata/README.md` — staged catalogue of the
-  WAV metadata-bearing chunks for later work.
+  WAV metadata-bearing chunks for later work; the source for the `id3 ` /
+  `ID3 ` and `PAD ` chunk recognition.
+- `docs/container/id3/README.md` — the 10-byte ID3v2 header layout (magic
+  + version + flags + sync-safe size) common to all v2 versions; the
+  source for the `id3` chunk's lightweight `Id3v2Header` recognizer. Frame
+  decoding is out of scope here (it lives in `oxideav-id3`).
 
 ## License
 

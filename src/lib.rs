@@ -97,7 +97,15 @@
 //! ([`padding::Junk`], RIFF MCI §2) — verbatim body preservation, the
 //! alignment / zero-fill constructors, the `encode_chunk` inverse, and
 //! the BS.2088-2 §2.5 `ds64`-reservation classifier
-//! ([`padding::Junk::is_ds64_reservation`]).
+//! ([`padding::Junk::is_ds64_reservation`]); round 365 adds the
+//! `WAVEFORMATEXTENSIBLE` `dwChannelMask` speaker-position decoder
+//! ([`channels::ChannelMask`] / [`channels::SpeakerPosition`] /
+//! [`channels::StandardLayout`]) — the named-position decomposition, the
+//! in-file channel-order mapping, and standard-layout recognition — plus
+//! the `id3 ` / `ID3 ` embedded-ID3v2-tag carrier ([`id3::Id3Chunk`],
+//! verbatim tag preservation + a lightweight [`id3::Id3v2Header`]
+//! recognizer, no frame decoding) and the `PAD ` padding FourCC
+//! ([`padding::FOURCC_PAD`]).
 //!
 //! ## Wire format (§1.3 of the 1991 spec)
 //!
@@ -189,6 +197,7 @@ pub mod ds64;
 pub mod error;
 pub mod fact;
 pub mod fourcc;
+pub mod id3;
 pub mod info;
 pub mod inst;
 pub mod padding;
@@ -236,9 +245,14 @@ pub use ds64::{
 pub use error::{Error, Result};
 pub use fact::{Fact, FACT_MIN_LEN, FOURCC_FACT};
 pub use fourcc::{fourcc_bytes, fourcc_to_string, is_printable_fourcc};
+pub use id3::{
+    build_id3v2_header, is_id3_fourcc, parse_id3v2_header, Id3Chunk, Id3v2Header, FOURCC_ID3,
+    FOURCC_ID3_UPPER, ID3V2_HEADER_LEN, ID3V2_MAGIC, ID3_FLAG_EXPERIMENTAL,
+    ID3_FLAG_EXTENDED_HEADER, ID3_FLAG_FOOTER, ID3_FLAG_UNSYNCHRONISATION,
+};
 pub use info::{zstr_bytes, zstr_value, InfoList, InfoTag};
 pub use inst::{Inst, FOURCC_INST, INST_LEN};
-pub use padding::{Junk, DS64_RESERVATION_LEN, FOURCC_JUNK};
+pub use padding::{is_padding_fourcc, Junk, DS64_RESERVATION_LEN, FOURCC_JUNK, FOURCC_PAD};
 pub use plst::{PlaySegment, Playlist, FOURCC_PLST, PLAY_SEGMENT_LEN};
 pub use smpl::{
     SampleLoop, Smpl, FOURCC_SMPL, SAMPLE_LOOP_LEN, SMPL_HEADER_LEN, SMPTE_FORMAT_NONE,
