@@ -197,6 +197,7 @@ pub mod channels;
 pub mod chna;
 pub mod chunk;
 pub mod cset;
+pub mod ctoc;
 pub mod cue;
 pub mod ds64;
 pub mod error;
@@ -242,6 +243,12 @@ pub use chunk::{
 pub use cset::{
     country_name, country_name_defaulted, language_name, language_name_defaulted, CharacterSet,
     CSET_LEN, DEFAULT_COUNTRY, DEFAULT_DIALECT, DEFAULT_LANGUAGE, FOURCC_CSET,
+};
+pub use ctoc::{
+    element_bytes, is_compound_fourcc, CtocChunk, CtocEntry, CTOC_EFU_CODEPAGE,
+    CTOC_EFU_COMPRESSPARAM0, CTOC_EFU_COMPRESSPARAM9, CTOC_EFU_LANGUAGE, CTOC_EFU_LASTMODTIME,
+    CTOC_EFU_UNUSED, CTOC_EF_DELETED, CTOC_EF_UNUSED, CTOC_HEADER_INFO_LEN, CTOC_HF_MEDSUBTYPE,
+    CTOC_HF_SEQUENTIAL, CTOC_PARAM_DEF_LEN, FOURCC_CGRP, FOURCC_CTOC,
 };
 pub use cue::{CueChunk, CuePoint, CUE_POINT_LEN, FOURCC_CUE};
 pub use ds64::{

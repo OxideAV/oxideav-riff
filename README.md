@@ -266,6 +266,19 @@ owned [`RiffTree`] of [`RiffChunk`] nodes:
   `LIST adtl` `ltxt` record's `wCountry` / `wLanguage` / `wDialect` raw
   codes — previously recorded as opaque `u16` — via the new
   `LabeledText::country_name` / `language_name` accessors.
+- **`CTOC` / `CGRP` compound-file index** ([`CtocChunk`] /
+  [`CtocEntry`]) — the §2 "Compound File Structure" generic
+  container-within-a-container (`RIFF('type' <CTOC> <CGRP>)`; the Bundle
+  `BND` form is the canonical user). `CGRP` holds a contiguous block of
+  arbitrary compound-file elements; `CTOC` indexes them. The decoder
+  handles the full *parameterized* layout — the 7-DWORD header
+  information, the `wEntrySize` / `wNameSize` / `wExHdrFields` /
+  `wExEntFields` parameter-table definition with its usage arrays, the
+  `adwExHdrField` + `bHeaderPad` header parameter table, and the
+  `dwEntriesTotal` table entries (offset / size / media type /
+  compression / per-entry extra fields / flags / `achName`). `encode_body`
+  is the byte-exact inverse; `element_bytes` slices an element out of a
+  `CGRP` body by an entry's offset+size, rejecting deleted/unused entries.
 - **`inst` instrument** ([`Inst`]) — the fixed 7-byte MIDI playback-hint
   record a sampler uses to map a single WAV sample across a keyboard:
   `UnshiftedNote` (the key the sample plays unshifted), signed `FineTune`

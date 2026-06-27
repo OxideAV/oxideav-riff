@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 376 — `CTOC` / `CGRP` compound-file index chunks
+  (`ctoc` module).** The 1991 spec §2 "Compound File Structure" defines a
+  generic container-within-a-container — `RIFF('type' <CTOC> <CGRP>)`
+  (the Bundle `BND` form is the canonical user) — where `CGRP` holds a
+  contiguous block of arbitrary compound-file elements and `CTOC` is the
+  index into it. The new `CtocChunk` decoder/encoder handles the full
+  *parameterized* layout: the 7-DWORD header information
+  (`dwHeaderSize` / `dwEntriesTotal` / … / `dwHeaderFlags`), the
+  parameter-table definition (`wEntrySize` / `wNameSize` /
+  `wExHdrFields` / `wExEntFields` plus the `awExHdrFldUsage` /
+  `awExEntFldUsage` usage arrays), the header parameter table
+  (`adwExHdrField` + `bHeaderPad`), and the `dwEntriesTotal` table
+  entries (each `dwOffset` / `dwSize` / `dwMedType` / `dwMedUsage` /
+  `dwCompressTech` / `dwUncompressBytes` + per-entry extra fields +
+  `bEntryFlags` + `wNameSize`-wide `achName` + `bEntryPad`).
+  `encode_body` is the byte-exact inverse with full internal-consistency
+  validation. Named flag constants (`CTOC_HF_SEQUENTIAL` /
+  `CTOC_HF_MEDSUBTYPE`, `CTOC_EF_DELETED` / `CTOC_EF_UNUSED`) and the
+  extra-field usage codes (`CTOC_EFU_*`). `element_bytes` resolves an
+  entry against a `CGRP` body (offset relative to the CGRP data portion),
+  rejecting deleted/unused entries and overruns. 12 tests.
+
 - **Round 376 — `RIFX` big-endian byte-order support in the `tree`
   model.** The 1991 spec §2 defines `RIFX` as the Motorola big-endian
   counterpart of Intel little-endian `RIFF`: identical structure, the
