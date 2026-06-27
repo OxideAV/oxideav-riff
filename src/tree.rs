@@ -369,6 +369,43 @@ impl RiffTree {
         })
     }
 
+    /// Read a `RIFF` / `RIFX` file from a seekable source into an owned
+    /// tree.
+    ///
+    /// Convenience for callers that hold a file handle rather than a
+    /// slurped `&[u8]`: it reads the 8-byte outer header to learn the
+    /// outer `ckSize`, then pulls exactly the outer chunk
+    /// (`8 + ckSize` bytes) into a buffer and delegates to
+    /// [`RiffTree::parse`]. Bytes after the outer chunk are not read.
+    ///
+    /// The tree is an in-memory model by construction, so this is a
+    /// read-into-`Vec` followed by `parse` — there's no streaming-tree
+    /// variant. For genuinely streaming consumption that skips chunks
+    /// without materialising them, use [`crate::walk::Walker`] instead.
+    pub fn from_reader<R: std::io::Read + std::io::Seek + ?Sized>(r: &mut R) -> Result<Self> {
+        r.seek(std::io::SeekFrom::Start(0))?;
+        let mut header = [0u8; 8];
+        r.read_exact(&mut header)?;
+        let id = [header[0], header[1], header[2], header[3]];
+        let byte_order = if id == FOURCC_RIFF {
+            ByteOrder::LittleEndian
+        } else if id == FOURCC_RIFX {
+            ByteOrder::BigEndian
+        } else {
+            return Err(Error::invalid(
+                "RIFF: outer chunk is neither 'RIFF' nor 'RIFX'",
+            ));
+        };
+        let ck_size = byte_order.read_u32([header[4], header[5], header[6], header[7]]) as usize;
+        let total = 8usize
+            .checked_add(ck_size)
+            .ok_or_else(|| Error::invalid("RIFF: outer ckSize overflows usize"))?;
+        let mut buf = vec![0u8; total];
+        buf[..8].copy_from_slice(&header);
+        r.read_exact(&mut buf[8..])?;
+        Self::parse(&buf)
+    }
+
     /// Serialise the tree back to a byte buffer in its [`ByteOrder`].
     ///
     /// The inverse of [`RiffTree::parse`]: for any tree produced by
@@ -662,6 +699,39 @@ mod tests {
         encode_chunk(&mut bytes, b"RIFF", &inner).unwrap();
         let err = RiffTree::parse(&bytes).unwrap_err();
         assert!(format!("{err}").contains("MAX_DEPTH"));
+    }
+
+    #[test]
+    fn from_reader_matches_parse() {
+        use std::io::Cursor;
+        let bytes = sample_wave();
+        let from_slice = RiffTree::parse(&bytes).unwrap();
+        let mut cur = Cursor::new(&bytes);
+        let from_rdr = RiffTree::from_reader(&mut cur).unwrap();
+        assert_eq!(from_rdr, from_slice);
+        assert_eq!(from_rdr.encode().unwrap(), bytes);
+    }
+
+    #[test]
+    fn from_reader_ignores_trailing_bytes() {
+        use std::io::Cursor;
+        let mut bytes = sample_wave();
+        let outer_len = bytes.len();
+        bytes.extend_from_slice(b"TRAILINGSLOP");
+        let mut cur = Cursor::new(&bytes);
+        let tree = RiffTree::from_reader(&mut cur).unwrap();
+        // Re-encode reproduces only the outer chunk.
+        assert_eq!(tree.encode().unwrap(), &bytes[..outer_len]);
+    }
+
+    #[test]
+    fn from_reader_rejects_non_riff() {
+        use std::io::Cursor;
+        let mut bytes = sample_wave();
+        bytes[0] = b'Z';
+        let mut cur = Cursor::new(&bytes);
+        let err = RiffTree::from_reader(&mut cur).unwrap_err();
+        assert!(format!("{err}").contains("neither 'RIFF' nor 'RIFX'"));
     }
 
     #[test]

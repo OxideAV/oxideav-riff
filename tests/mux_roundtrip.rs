@@ -20,7 +20,7 @@ use std::io::Read;
 use oxideav_riff::{
     encode_chunk, fourcc_to_string, is_rf64_magic, read_chunk_header, read_form_type, Acid,
     AdtlEntry, AdtlList, ChannelAllocation, CueChunk, CuePoint, DataSize64, Fact, InfoList,
-    InfoTag, Inst, Junk, Smpl, Walker, WaveDataList, WaveFormat,
+    InfoTag, Inst, Junk, RiffChunk, RiffTree, Smpl, Walker, WaveDataList, WaveFile, WaveFormat,
 };
 
 /// Wrap an already-serialized LIST *body* (the form-type word + children)
@@ -527,4 +527,77 @@ fn mk_audio_id(
         pack_ref: pr_f,
         pad: 0,
     }
+}
+
+/// Build a full RIFF/WAVE file, parse it into the owned [`RiffTree`],
+/// decode the typed [`WaveFile`] view, and confirm both the typed
+/// fields and the byte-exact tree round-trip — the round-376 capstone
+/// tying the recursive tree + typed-view layers to the per-chunk
+/// decoders.
+#[test]
+fn tree_and_wavefile_view_round_trip_a_full_wave() {
+    // fmt : 16-byte WAVEFORMAT, PCM stereo 44.1 kHz 16-bit.
+    let mut fmt = Vec::new();
+    fmt.extend_from_slice(&1u16.to_le_bytes()); // PCM
+    fmt.extend_from_slice(&2u16.to_le_bytes()); // channels
+    fmt.extend_from_slice(&44_100u32.to_le_bytes());
+    fmt.extend_from_slice(&176_400u32.to_le_bytes());
+    fmt.extend_from_slice(&4u16.to_le_bytes()); // block align
+    fmt.extend_from_slice(&16u16.to_le_bytes()); // bits
+
+    // fact: 4-byte sample length.
+    let fact = 2048u32.to_le_bytes().to_vec();
+
+    // LIST INFO { INAM "Title" IART "Artist" }
+    let mut info = Vec::new();
+    info.extend_from_slice(b"INFO");
+    encode_chunk(&mut info, b"INAM", b"Title\0").unwrap();
+    encode_chunk(&mut info, b"IART", b"Artist\0").unwrap();
+
+    // LIST adtl { labl: id + "marker\0" }
+    let mut labl = Vec::new();
+    labl.extend_from_slice(&1u32.to_le_bytes());
+    labl.extend_from_slice(b"marker\0");
+    let mut adtl = Vec::new();
+    adtl.extend_from_slice(b"adtl");
+    encode_chunk(&mut adtl, b"labl", &labl).unwrap();
+
+    // A vendor chunk the WaveFile view does NOT model — must survive.
+    let vendor = b"vendor-private-blob".to_vec();
+
+    let mut body = Vec::new();
+    body.extend_from_slice(b"WAVE");
+    encode_chunk(&mut body, b"fmt ", &fmt).unwrap();
+    encode_chunk(&mut body, b"fact", &fact).unwrap();
+    encode_chunk(&mut body, b"data", &[0u8; 64]).unwrap();
+    encode_chunk(&mut body, b"LIST", &info).unwrap();
+    encode_chunk(&mut body, b"LIST", &adtl).unwrap();
+    encode_chunk(&mut body, b"vnd ", &vendor).unwrap();
+    let mut bytes = Vec::new();
+    encode_chunk(&mut bytes, b"RIFF", &body).unwrap();
+
+    // Parse into the owned tree; byte-exact re-encode.
+    let tree = RiffTree::parse(&bytes).unwrap();
+    assert_eq!(&tree.form_type, b"WAVE");
+    assert_eq!(tree.encode().unwrap(), bytes);
+
+    // Typed view decodes the modelled chunks.
+    let wav = WaveFile::from_tree(&tree).unwrap();
+    let f = wav.format.as_ref().unwrap();
+    assert_eq!(f.channels, 2);
+    assert_eq!(f.sample_rate, 44_100);
+    assert_eq!(wav.fact.as_ref().unwrap().sample_length, 2048);
+    assert_eq!(wav.info.as_ref().unwrap().len(), 2);
+    assert_eq!(wav.adtl.as_ref().unwrap().entries().len(), 1);
+
+    // The vendor chunk the view ignores is still in the tree, verbatim.
+    match tree.find(b"vnd ").unwrap() {
+        RiffChunk::Leaf { body, .. } => assert_eq!(body, b"vendor-private-blob"),
+        _ => panic!("vnd should be a leaf"),
+    }
+
+    // Reading the same bytes through from_reader yields an equal tree.
+    let mut cur = Cursor::new(&bytes);
+    let from_rdr = RiffTree::from_reader(&mut cur).unwrap();
+    assert_eq!(from_rdr, tree);
 }

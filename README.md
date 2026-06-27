@@ -90,7 +90,8 @@ owned [`RiffTree`] of [`RiffChunk`] nodes:
   stack exhaustion.
 - **Byte-exact encode** — `RiffTree::encode` is the inverse:
   `parse → encode` reproduces any well-formed 32-bit `RIFF` file
-  byte-for-byte.
+  byte-for-byte. `RiffTree::from_reader` builds the tree straight from a
+  seekable `Read + Seek` source for callers holding a file handle.
 - **`RIFX` big-endian variant** — the §2 Motorola-order counterpart of
   `RIFF` (identical structure, `RIFX` magic, big-endian `ckSize` length
   words) is auto-detected on parse and re-emitted in the same order. The

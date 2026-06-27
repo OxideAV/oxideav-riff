@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 376 — `RiffTree::from_reader` + tree/WaveFile file-level
+  round-trip fixture.** `RiffTree::from_reader` builds an owned tree
+  straight from a seekable `Read + Seek` source (reads the outer header
+  to learn `ckSize`, pulls exactly the outer chunk, delegates to
+  `parse`) so callers holding a file handle don't have to slurp + pass a
+  `&[u8]`; trailing bytes after the outer chunk are not read. A new
+  `tests/mux_roundtrip.rs` fixture
+  (`tree_and_wavefile_view_round_trip_a_full_wave`) builds a full
+  RIFF/WAVE file (fmt + fact + data + LIST INFO + LIST adtl + a vendor
+  chunk), parses it into the `RiffTree`, asserts the byte-exact
+  re-encode, decodes the typed `WaveFile` view, confirms the
+  unmodelled vendor chunk survives in the tree verbatim, and checks
+  `from_reader` yields an equal tree.
+
 - **Round 376 — typed `WaveFile` view + `RiffTree::find_all`.** A
   read-side convenience layer one level above the generic tree:
   `wave::WaveFile::from_tree` walks a parsed `RIFF/WAVE` `RiffTree` and
