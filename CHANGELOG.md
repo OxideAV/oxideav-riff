@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 376 — typed `WaveFile` view + `RiffTree::find_all`.** A
+  read-side convenience layer one level above the generic tree:
+  `wave::WaveFile::from_tree` walks a parsed `RIFF/WAVE` `RiffTree` and
+  dispatches its chunks by FourCC into the existing typed decoders —
+  `fmt ` → `WaveFormat`, `fact` → `Fact`, `cue ` → `CueChunk`,
+  `plst` → `Playlist`, `bext` → `BroadcastExtension`, `acid` → `Acid`,
+  `smpl` → `Smpl`, `inst` → `Inst`, `LIST INFO` → `InfoList`,
+  `LIST adtl` → `AdtlList`. Every field is `Option` (a WAV file need only
+  carry `fmt ` + `data`); construction fails only if the form type is not
+  `WAVE` or a present chunk is malformed. The view borrows the tree, so
+  the tree stays the byte-exact-rewrite source of truth and any chunk the
+  view doesn't model survives untouched. Also adds `RiffTree::find_all`
+  (collect every descendant with a given FourCC — for FourCCs that
+  legitimately repeat, like multiple `LIST` chunks or `data` segments).
+  8 new tests.
+
 - **Round 376 — `CTOC` / `CGRP` compound-file index chunks
   (`ctoc` module).** The 1991 spec §2 "Compound File Structure" defines a
   generic container-within-a-container — `RIFF('type' <CTOC> <CGRP>)`

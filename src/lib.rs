@@ -213,6 +213,7 @@ pub mod subtype;
 pub mod sxml;
 pub mod tree;
 pub mod walk;
+pub mod wave;
 pub mod waveformat;
 pub mod wavl;
 
@@ -280,6 +281,7 @@ pub use sxml::{
 };
 pub use tree::{ByteOrder, RiffChunk, RiffTree, MAX_DEPTH};
 pub use walk::{ChunkRef, Walker};
+pub use wave::{WaveFile, FORM_WAVE};
 pub use waveformat::{
     ExtensibleFields, Guid, WaveFormat, KSDATAFORMAT_SUBTYPE_WAVEFORMATEX_BASE, WAVE_FORMAT_ADPCM,
     WAVE_FORMAT_ALAW, WAVE_FORMAT_EXTENSIBLE, WAVE_FORMAT_IEEE_FLOAT, WAVE_FORMAT_MULAW,

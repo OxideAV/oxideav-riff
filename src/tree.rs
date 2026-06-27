@@ -249,6 +249,21 @@ impl RiffChunk {
         None
     }
 
+    /// Collect every descendant (depth-first, pre-order) whose FourCC
+    /// equals `id` into `out`. A matched group is itself recorded *and*
+    /// still descended (a `LIST` matching the id could in principle
+    /// contain a deeper match).
+    fn collect_into<'a>(&'a self, id: &[u8; 4], out: &mut Vec<&'a RiffChunk>) {
+        if &self.id() == id {
+            out.push(self);
+        }
+        if let RiffChunk::Group { children, .. } = self {
+            for child in children {
+                child.collect_into(id, out);
+            }
+        }
+    }
+
     /// Find the first child `LIST` whose list-type equals `list_type`
     /// (e.g. `b"INFO"`, `b"adtl"`, `b"hdrl"`). Only the immediate
     /// children of this node are considered. Returns the matching
@@ -401,6 +416,21 @@ impl RiffTree {
                     if *id == FOURCC_LIST && form_type == list_type
             )
         })
+    }
+
+    /// Collect every descendant chunk (depth-first, pre-order) with the
+    /// given FourCC across the whole tree.
+    ///
+    /// Unlike [`RiffTree::find`] (first match only) this is the right
+    /// helper when a FourCC may legitimately repeat — e.g. several
+    /// top-level `LIST` chunks, or multiple `data` segments — and the
+    /// editor needs all of them.
+    pub fn find_all(&self, id: &[u8; 4]) -> Vec<&RiffChunk> {
+        let mut out = Vec::new();
+        for child in &self.children {
+            child.collect_into(id, &mut out);
+        }
+        out
     }
 }
 
@@ -632,6 +662,33 @@ mod tests {
         encode_chunk(&mut bytes, b"RIFF", &inner).unwrap();
         let err = RiffTree::parse(&bytes).unwrap_err();
         assert!(format!("{err}").contains("MAX_DEPTH"));
+    }
+
+    #[test]
+    fn find_all_collects_repeated_fourccs() {
+        // RIFF/WAVE { LIST(INFO){ INAM IART } LIST(adtl){} }
+        let mut info = Vec::new();
+        info.extend_from_slice(b"INFO");
+        encode_chunk(&mut info, b"INAM", b"Hi").unwrap();
+        encode_chunk(&mut info, b"IART", b"X").unwrap();
+        let mut adtl = Vec::new();
+        adtl.extend_from_slice(b"adtl");
+        let mut body = Vec::new();
+        body.extend_from_slice(b"WAVE");
+        encode_chunk(&mut body, b"LIST", &info).unwrap();
+        encode_chunk(&mut body, b"LIST", &adtl).unwrap();
+        let mut bytes = Vec::new();
+        encode_chunk(&mut bytes, b"RIFF", &body).unwrap();
+
+        let tree = RiffTree::parse(&bytes).unwrap();
+        // Two LIST chunks at the top level.
+        let lists = tree.find_all(b"LIST");
+        assert_eq!(lists.len(), 2);
+        // INAM + IART are deeper leaves; one each.
+        assert_eq!(tree.find_all(b"INAM").len(), 1);
+        assert_eq!(tree.find_all(b"IART").len(), 1);
+        // No match → empty.
+        assert!(tree.find_all(b"data").is_empty());
     }
 
     /// Hand-build a `RIFX`/`WAVE { fmt(4) data(3→pad) }` with big-endian

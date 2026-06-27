@@ -96,10 +96,25 @@ owned [`RiffTree`] of [`RiffChunk`] nodes:
   words) is auto-detected on parse and re-emitted in the same order. The
   detected [`ByteOrder`] is exposed on `RiffTree::byte_order`.
 - **Navigation** — `find` does a depth-first pre-order descendant
-  lookup by FourCC across the whole tree; `find_list` locates an
-  immediate-child `LIST` by its list-type (`b"INFO"`, `b"adtl"`,
-  `b"hdrl"`, …); `RiffChunk::children` / `ck_size` /
-  `padded_outer_size` expose the structure.
+  lookup by FourCC across the whole tree; `find_all` collects *every*
+  match (for FourCCs that legitimately repeat — multiple `LIST` chunks,
+  several `data` segments); `find_list` locates an immediate-child
+  `LIST` by its list-type (`b"INFO"`, `b"adtl"`, `b"hdrl"`, …);
+  `RiffChunk::children` / `ck_size` / `padded_outer_size` expose the
+  structure.
+
+### Typed `WAVE` view
+
+[`WaveFile::from_tree`] sits one level above the generic tree for the
+`RIFF/WAVE` form: it walks a parsed [`RiffTree`] and decodes the chunks
+a WAV / BWF file commonly carries into their typed structs —
+`fmt ` → [`WaveFormat`], `fact` → [`Fact`], `cue ` → [`CueChunk`],
+`plst` → [`Playlist`], `bext` → [`BroadcastExtension`],
+`acid` → [`Acid`], `smpl` → [`Smpl`], `inst` → [`Inst`],
+`LIST INFO` → [`InfoList`], `LIST adtl` → [`AdtlList`]. Each field is
+optional; the view borrows the tree, so the tree stays the source of
+truth for byte-exact rewrite and unmodelled / vendor chunks survive
+untouched.
 
 ## Typed chunk-body decoders
 
