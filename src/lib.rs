@@ -210,6 +210,7 @@ pub mod plst;
 pub mod smpl;
 pub mod subtype;
 pub mod sxml;
+pub mod tree;
 pub mod walk;
 pub mod waveformat;
 pub mod wavl;
@@ -270,6 +271,7 @@ pub use sxml::{
     FMT_TYPE_GZIP, FMT_TYPE_UNCOMPRESSED, FOURCC_AXML, FOURCC_BXML, FOURCC_SXML,
     SUB_XML_HEADER_LEN,
 };
+pub use tree::{RiffChunk, RiffTree, MAX_DEPTH};
 pub use walk::{ChunkRef, Walker};
 pub use waveformat::{
     ExtensibleFields, Guid, WaveFormat, KSDATAFORMAT_SUBTYPE_WAVEFORMATEX_BASE, WAVE_FORMAT_ADPCM,

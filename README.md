@@ -70,6 +70,33 @@ The wire-format invariants enforced:
   `Walker::data_size_64()` so the consumer can resolve any later
   `0xFFFFFFFF` `data` / `fact` / table-listed chunk size.
 
+## The recursive chunk-tree model
+
+The streaming `Walker` is the right primitive for a demuxer that knows
+which group ckIDs it cares about and skips the rest. For the
+*whole-file edit-and-rewrite* case — read a WAV/BWF/AVI file into
+memory, mutate or reorder a metadata chunk, write it back without
+dropping anything — the [`tree`] module reifies the entire file as an
+owned [`RiffTree`] of [`RiffChunk`] nodes:
+
+- **Recursive parse** — `RiffTree::parse` descends every nested `LIST`
+  / `RIFF` group per the §2 grammar `RIFF ( <formType> <ck>... )` /
+  `LIST ( <listType> <ck>... )`, materialising each chunk as a
+  `RiffChunk::Leaf { id, body }` or `RiffChunk::Group { id, form_type,
+  children }`. Unknown chunk FourCCs survive verbatim as leaves
+  (the metadata spec's "treat unknown chunks as opaque-but-preserved"
+  rule), so editing one chunk never corrupts another. Nesting is
+  bounded by `MAX_DEPTH = 64` against pathological `LIST`-in-`LIST`
+  stack exhaustion.
+- **Byte-exact encode** — `RiffTree::encode` is the inverse:
+  `parse → encode` reproduces any well-formed 32-bit `RIFF` file
+  byte-for-byte.
+- **Navigation** — `find` does a depth-first pre-order descendant
+  lookup by FourCC across the whole tree; `find_list` locates an
+  immediate-child `LIST` by its list-type (`b"INFO"`, `b"adtl"`,
+  `b"hdrl"`, …); `RiffChunk::children` / `ck_size` /
+  `padded_outer_size` expose the structure.
+
 ## Typed chunk-body decoders
 
 - **`fmt ` WAV format descriptor** ([`WaveFormat`]) — covers the

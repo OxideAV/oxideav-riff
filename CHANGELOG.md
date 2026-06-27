@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 376 — recursive `tree` chunk-tree model
+  (`RiffTree` / `RiffChunk`).** The `Walker` is non-recursive — the right
+  primitive for a streaming demuxer but awkward for the whole-file
+  edit-and-rewrite case. The new `tree` module reifies a complete
+  in-memory `RIFF` file as an owned tree: every chunk is a `RiffChunk`
+  (`Leaf { id, body }` or `Group { id, form_type, children }`), with the
+  `RIFF` / `LIST` groups holding their children **recursively** per the
+  §2 grammar `RIFF ( <formType> <ck>... )` / `LIST ( <listType> <ck>... )`.
+  `RiffTree::parse` descends every nested `LIST` / `RIFF` group (bounded
+  by `MAX_DEPTH = 64` against decompression-bomb-style stack exhaustion),
+  preserving unknown chunk FourCCs verbatim as leaves so an editor that
+  rewrites one chunk never corrupts the ones it didn't touch. The
+  byte-exact inverse `RiffTree::encode` reproduces the input
+  byte-for-byte for any well-formed 32-bit `RIFF` file. Navigation
+  helpers: `find` (depth-first, pre-order descendant lookup by FourCC),
+  `find_list` (top-level / immediate-child `LIST` by list-type), plus
+  `RiffChunk::ck_size` / `padded_outer_size` / `children`. Outer-size
+  overrun, child-overflows-parent, truncated headers, and over-deep
+  nesting all surface as `Error::invalid`; trailing bytes after the outer
+  chunk are tolerated (a `RIFF` embedded in a larger container). 13 unit
+  tests + a doctest.
+
 - **Round 365 — `Walker::open_rf64` / `open_bw64` high-level 64-bit
   walker constructors.** The r351 followup: the `RF64` / `BW64`
   64-bit-extended outer wrappers can now be walked through the public
