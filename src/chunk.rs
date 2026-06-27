@@ -34,6 +34,14 @@ use crate::fourcc::fourcc_bytes;
 /// `RF64` / `BW64` as the EBU Tech 3306 §4 64-bit-extended siblings).
 pub const FOURCC_RIFF: [u8; 4] = fourcc_bytes(b"RIFF");
 
+/// Big-endian outer-wrapper FourCC (§2 "Notation Conventions"). A
+/// `RIFX` file is byte-for-byte identical to a `RIFF` file except the
+/// first four bytes are `RIFX` and every integer field (notably the
+/// `ckSize` length words) is stored in Motorola big-endian order rather
+/// than Intel little-endian. The 4-byte FourCCs themselves are ASCII and
+/// thus byte-order-independent.
+pub const FOURCC_RIFX: [u8; 4] = fourcc_bytes(b"RIFX");
+
 /// Nested-grouping FourCC. May appear inside `RIFF` (or another
 /// `LIST`) with its own 4-byte list-type subtag and a body of nested
 /// chunks.

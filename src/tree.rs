@@ -58,8 +58,53 @@
 //! assert_eq!(tree.encode().unwrap(), bytes);
 //! ```
 
-use crate::chunk::{encode_chunk, write_chunk_header, FOURCC_LIST, FOURCC_RIFF};
+use crate::chunk::{encode_chunk, write_chunk_header, FOURCC_LIST, FOURCC_RIFF, FOURCC_RIFX};
 use crate::error::{Error, Result};
+
+/// Integer byte order of a RIFF file's length fields.
+///
+/// The 1991 spec (§2 "Notation Conventions") defines `RIFX` as the
+/// Motorola big-endian counterpart of the Intel little-endian `RIFF`:
+/// "A RIFX file is the same as a RIFF file, except that the first four
+/// bytes are 'RIFX' instead of 'RIFF', and integer byte ordering is
+/// represented in Motorola format." The choice affects every `ckSize`
+/// length word (and any integer body fields the consumer interprets);
+/// the 4-byte FourCCs are ASCII and order-independent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ByteOrder {
+    /// Intel little-endian — the `RIFF` magic. The overwhelming common
+    /// case (WAV, AVI, WebP, …).
+    LittleEndian,
+    /// Motorola big-endian — the `RIFX` magic.
+    BigEndian,
+}
+
+impl ByteOrder {
+    /// The outer-wrapper FourCC this order serialises with
+    /// (`RIFF` / `RIFX`).
+    pub const fn magic(self) -> [u8; 4] {
+        match self {
+            ByteOrder::LittleEndian => FOURCC_RIFF,
+            ByteOrder::BigEndian => FOURCC_RIFX,
+        }
+    }
+
+    /// Decode a 4-byte length word in this order.
+    const fn read_u32(self, b: [u8; 4]) -> u32 {
+        match self {
+            ByteOrder::LittleEndian => u32::from_le_bytes(b),
+            ByteOrder::BigEndian => u32::from_be_bytes(b),
+        }
+    }
+
+    /// Encode a 4-byte length word in this order.
+    const fn write_u32(self, v: u32) -> [u8; 4] {
+        match self {
+            ByteOrder::LittleEndian => v.to_le_bytes(),
+            ByteOrder::BigEndian => v.to_be_bytes(),
+        }
+    }
+}
 
 /// Maximum nesting depth [`RiffTree::parse`] will descend before
 /// rejecting the input.
@@ -133,10 +178,25 @@ impl RiffChunk {
         8 + ck + (ck & 1)
     }
 
-    /// Append this chunk (header + body/children + pad) to `out`.
-    fn encode_into(&self, out: &mut Vec<u8>) -> Result<()> {
+    /// Append this chunk (header + body/children + pad) to `out` in the
+    /// given byte order.
+    fn encode_into(&self, out: &mut Vec<u8>, order: ByteOrder) -> Result<()> {
         match self {
-            RiffChunk::Leaf { id, body } => encode_chunk(out, id, body),
+            RiffChunk::Leaf { id, body } => {
+                if order == ByteOrder::LittleEndian {
+                    return encode_chunk(out, id, body);
+                }
+                // RIFX: same framing, big-endian ckSize.
+                let size = u32::try_from(body.len())
+                    .map_err(|_| Error::invalid("RIFF: chunk body exceeds 32-bit ckSize range"))?;
+                out.extend_from_slice(id);
+                out.extend_from_slice(&order.write_u32(size));
+                out.extend_from_slice(body);
+                if size & 1 == 1 {
+                    out.push(0);
+                }
+                Ok(())
+            }
             RiffChunk::Group {
                 id,
                 form_type,
@@ -145,10 +205,15 @@ impl RiffChunk {
                 let ck = self.ck_size();
                 let size = u32::try_from(ck)
                     .map_err(|_| Error::invalid("RIFF: group ckSize exceeds 32-bit range"))?;
-                write_chunk_header(out, id, size);
+                if order == ByteOrder::LittleEndian {
+                    write_chunk_header(out, id, size);
+                } else {
+                    out.extend_from_slice(id);
+                    out.extend_from_slice(&order.write_u32(size));
+                }
                 out.extend_from_slice(form_type);
                 for child in children {
-                    child.encode_into(out)?;
+                    child.encode_into(out, order)?;
                 }
                 // A group's ckSize is `4 + sum(padded children)`; each
                 // child already self-pads, so the group total is even
@@ -212,34 +277,42 @@ impl RiffChunk {
     }
 }
 
-/// An owned, recursively-parsed RIFF file.
+/// An owned, recursively-parsed RIFF (or RIFX) file.
 ///
-/// The outermost `RIFF` chunk is unwrapped into its `form_type` (the
-/// file's form, e.g. `WAVE` / `AVI ` / `WEBP`) plus its top-level
+/// The outermost `RIFF` / `RIFX` chunk is unwrapped into its `form_type`
+/// (the file's form, e.g. `WAVE` / `AVI ` / `WEBP`), its `byte_order`
+/// (little-endian for `RIFF`, big-endian for `RIFX`), plus its top-level
 /// `children`. Construct one with [`RiffTree::parse`]; serialise it
 /// back with [`RiffTree::encode`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RiffTree {
-    /// The outer `RIFF` form type (`WAVE`, `AVI `, `WEBP`, …).
+    /// The outer form type (`WAVE`, `AVI `, `WEBP`, …).
     pub form_type: [u8; 4],
-    /// Top-level children of the outer `RIFF` chunk, in file order.
+    /// Integer byte order of the length fields — little-endian for the
+    /// `RIFF` magic, big-endian for `RIFX`.
+    pub byte_order: ByteOrder,
+    /// Top-level children of the outer chunk, in file order.
     pub children: Vec<RiffChunk>,
 }
 
 impl RiffTree {
-    /// Parse a complete in-memory `RIFF` file into an owned tree.
+    /// Parse a complete in-memory `RIFF` or `RIFX` file into an owned
+    /// tree.
     ///
-    /// `bytes` must begin with the `RIFF` magic. The outer `ckSize` is
-    /// validated against the buffer length (it may be smaller — trailing
-    /// bytes after the outer chunk are ignored, matching readers that
-    /// tolerate a `RIFF` embedded in a larger container — but never
-    /// larger than what's present). Every nested `LIST` / `RIFF` group
-    /// is descended recursively up to [`MAX_DEPTH`].
+    /// `bytes` must begin with the `RIFF` (little-endian) or `RIFX`
+    /// (big-endian) magic; the detected [`ByteOrder`] governs how every
+    /// `ckSize` length word is decoded. The outer `ckSize` is validated
+    /// against the buffer length (it may be smaller — trailing bytes
+    /// after the outer chunk are ignored, matching readers that tolerate
+    /// a `RIFF` embedded in a larger container — but never larger than
+    /// what's present). Every nested `LIST` / `RIFF` group is descended
+    /// recursively up to [`MAX_DEPTH`].
     ///
-    /// Errors on: a non-`RIFF` magic (use [`crate::walk::Walker::open_rf64`]
-    /// for the 64-bit forms), an outer `ckSize` that overruns the buffer,
-    /// a child whose body overflows its parent's budget, a truncated
-    /// header, or nesting deeper than [`MAX_DEPTH`].
+    /// Errors on: a magic that is neither `RIFF` nor `RIFX` (use
+    /// [`crate::walk::Walker::open_rf64`] for the 64-bit forms), an outer
+    /// `ckSize` that overruns the buffer, a child whose body overflows
+    /// its parent's budget, a truncated header, or nesting deeper than
+    /// [`MAX_DEPTH`].
     pub fn parse(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < 12 {
             return Err(Error::invalid(
@@ -247,10 +320,16 @@ impl RiffTree {
             ));
         }
         let id = [bytes[0], bytes[1], bytes[2], bytes[3]];
-        if id != FOURCC_RIFF {
-            return Err(Error::invalid("RIFF: outer chunk is not 'RIFF'"));
-        }
-        let ck_size = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]) as usize;
+        let byte_order = if id == FOURCC_RIFF {
+            ByteOrder::LittleEndian
+        } else if id == FOURCC_RIFX {
+            ByteOrder::BigEndian
+        } else {
+            return Err(Error::invalid(
+                "RIFF: outer chunk is neither 'RIFF' nor 'RIFX'",
+            ));
+        };
+        let ck_size = byte_order.read_u32([bytes[4], bytes[5], bytes[6], bytes[7]]) as usize;
         if ck_size < 4 {
             return Err(Error::invalid(
                 "RIFF: outer ckSize < 4 — no room for form type",
@@ -267,17 +346,19 @@ impl RiffTree {
         }
         let form_type = [bytes[8], bytes[9], bytes[10], bytes[11]];
         // Children occupy bytes[12 .. payload_end].
-        let children = parse_children(&bytes[12..payload_end], 1)?;
+        let children = parse_children(&bytes[12..payload_end], 1, byte_order)?;
         Ok(RiffTree {
             form_type,
+            byte_order,
             children,
         })
     }
 
-    /// Serialise the tree back to a `RIFF` byte buffer.
+    /// Serialise the tree back to a byte buffer in its [`ByteOrder`].
     ///
     /// The inverse of [`RiffTree::parse`]: for any tree produced by
-    /// `parse` the output equals the original input byte-for-byte.
+    /// `parse` the output equals the original input byte-for-byte
+    /// (`RIFF` or `RIFX` magic preserved).
     pub fn encode(&self) -> Result<Vec<u8>> {
         let ck = 4 + self
             .children
@@ -287,10 +368,11 @@ impl RiffTree {
         let size = u32::try_from(ck)
             .map_err(|_| Error::invalid("RIFF: outer ckSize exceeds 32-bit range"))?;
         let mut out = Vec::with_capacity(8 + ck as usize);
-        write_chunk_header(&mut out, &FOURCC_RIFF, size);
+        out.extend_from_slice(&self.byte_order.magic());
+        out.extend_from_slice(&self.byte_order.write_u32(size));
         out.extend_from_slice(&self.form_type);
         for child in &self.children {
-            child.encode_into(&mut out)?;
+            child.encode_into(&mut out, self.byte_order)?;
         }
         Ok(out)
     }
@@ -323,8 +405,9 @@ impl RiffTree {
 }
 
 /// Parse a run of sibling chunks out of `body` (the payload of a group,
-/// after its form-type word has been consumed).
-fn parse_children(body: &[u8], depth: usize) -> Result<Vec<RiffChunk>> {
+/// after its form-type word has been consumed), decoding length words in
+/// `order`.
+fn parse_children(body: &[u8], depth: usize, order: ByteOrder) -> Result<Vec<RiffChunk>> {
     if depth > MAX_DEPTH {
         return Err(Error::invalid("RIFF: nesting exceeds MAX_DEPTH"));
     }
@@ -340,8 +423,7 @@ fn parse_children(body: &[u8], depth: usize) -> Result<Vec<RiffChunk>> {
         }
         let id = [body[pos], body[pos + 1], body[pos + 2], body[pos + 3]];
         let ck_size =
-            u32::from_le_bytes([body[pos + 4], body[pos + 5], body[pos + 6], body[pos + 7]])
-                as usize;
+            order.read_u32([body[pos + 4], body[pos + 5], body[pos + 6], body[pos + 7]]) as usize;
         let body_start = pos + 8;
         let body_end = body_start
             .checked_add(ck_size)
@@ -357,7 +439,7 @@ fn parse_children(body: &[u8], depth: usize) -> Result<Vec<RiffChunk>> {
                 ));
             }
             let form_type = [chunk_body[0], chunk_body[1], chunk_body[2], chunk_body[3]];
-            let nested = parse_children(&chunk_body[4..], depth + 1)?;
+            let nested = parse_children(&chunk_body[4..], depth + 1, order)?;
             RiffChunk::Group {
                 id,
                 form_type,
@@ -473,7 +555,7 @@ mod tests {
         let mut bytes = sample_wave();
         bytes[0] = b'X';
         let err = RiffTree::parse(&bytes).unwrap_err();
-        assert!(format!("{err}").contains("not 'RIFF'"));
+        assert!(format!("{err}").contains("neither 'RIFF' nor 'RIFX'"));
     }
 
     #[test]
@@ -514,7 +596,9 @@ mod tests {
         let tree = RiffTree::parse(&bytes).unwrap();
         for child in &tree.children {
             let mut buf = Vec::new();
-            child.encode_into(&mut buf).unwrap();
+            child
+                .encode_into(&mut buf, ByteOrder::LittleEndian)
+                .unwrap();
             assert_eq!(buf.len() as u64, child.padded_outer_size());
         }
     }
@@ -548,5 +632,59 @@ mod tests {
         encode_chunk(&mut bytes, b"RIFF", &inner).unwrap();
         let err = RiffTree::parse(&bytes).unwrap_err();
         assert!(format!("{err}").contains("MAX_DEPTH"));
+    }
+
+    /// Hand-build a `RIFX`/`WAVE { fmt(4) data(3→pad) }` with big-endian
+    /// `ckSize` words so the parser must read Motorola order.
+    fn sample_rifx() -> Vec<u8> {
+        let mut v = Vec::new();
+        // outer ckSize (big-endian): WAVE(4) + fmt hdr(8)+body(4)
+        //   + data hdr(8)+body(3)+pad(1) = 28
+        v.extend_from_slice(b"RIFX");
+        v.extend_from_slice(&28u32.to_be_bytes());
+        v.extend_from_slice(b"WAVE");
+        v.extend_from_slice(b"fmt ");
+        v.extend_from_slice(&4u32.to_be_bytes());
+        v.extend_from_slice(&[0x01, 0x00, 0x02, 0x00]);
+        v.extend_from_slice(b"data");
+        v.extend_from_slice(&3u32.to_be_bytes());
+        v.extend_from_slice(&[0xAA, 0xBB, 0xCC]);
+        v.push(0); // pad
+        v
+    }
+
+    #[test]
+    fn rifx_parses_big_endian_sizes() {
+        let bytes = sample_rifx();
+        let tree = RiffTree::parse(&bytes).unwrap();
+        assert_eq!(tree.byte_order, ByteOrder::BigEndian);
+        assert_eq!(&tree.form_type, b"WAVE");
+        assert_eq!(tree.children.len(), 2);
+        match tree.find(b"data").unwrap() {
+            RiffChunk::Leaf { body, .. } => assert_eq!(body, &[0xAA, 0xBB, 0xCC]),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn rifx_round_trips_byte_exact() {
+        let bytes = sample_rifx();
+        let tree = RiffTree::parse(&bytes).unwrap();
+        // Re-encode must preserve the RIFX magic + big-endian sizes.
+        assert_eq!(tree.encode().unwrap(), bytes);
+    }
+
+    #[test]
+    fn riff_byte_order_is_little_endian() {
+        let bytes = sample_wave();
+        let tree = RiffTree::parse(&bytes).unwrap();
+        assert_eq!(tree.byte_order, ByteOrder::LittleEndian);
+        assert_eq!(tree.byte_order.magic(), *b"RIFF");
+    }
+
+    #[test]
+    fn byte_order_magic_pairs() {
+        assert_eq!(ByteOrder::LittleEndian.magic(), *b"RIFF");
+        assert_eq!(ByteOrder::BigEndian.magic(), *b"RIFX");
     }
 }

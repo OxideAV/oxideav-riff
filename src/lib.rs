@@ -237,7 +237,7 @@ pub use chna::{
 };
 pub use chunk::{
     encode_chunk, read_chunk_header, read_form_type, skip_chunk, skip_pad, write_chunk_header,
-    ChunkHeader, FOURCC_LIST, FOURCC_RIFF,
+    ChunkHeader, FOURCC_LIST, FOURCC_RIFF, FOURCC_RIFX,
 };
 pub use cset::{
     country_name, country_name_defaulted, language_name, language_name_defaulted, CharacterSet,
@@ -271,7 +271,7 @@ pub use sxml::{
     FMT_TYPE_GZIP, FMT_TYPE_UNCOMPRESSED, FOURCC_AXML, FOURCC_BXML, FOURCC_SXML,
     SUB_XML_HEADER_LEN,
 };
-pub use tree::{RiffChunk, RiffTree, MAX_DEPTH};
+pub use tree::{ByteOrder, RiffChunk, RiffTree, MAX_DEPTH};
 pub use walk::{ChunkRef, Walker};
 pub use waveformat::{
     ExtensibleFields, Guid, WaveFormat, KSDATAFORMAT_SUBTYPE_WAVEFORMATEX_BASE, WAVE_FORMAT_ADPCM,

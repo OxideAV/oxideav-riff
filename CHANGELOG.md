@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 376 — `RIFX` big-endian byte-order support in the `tree`
+  model.** The 1991 spec §2 defines `RIFX` as the Motorola big-endian
+  counterpart of Intel little-endian `RIFF`: identical structure, the
+  first four bytes are `RIFX`, and every integer `ckSize` length word is
+  big-endian (the 4-byte FourCCs are ASCII and order-independent). The
+  `tree` module now carries a `ByteOrder` enum (`LittleEndian` /
+  `BigEndian`) on `RiffTree::byte_order`; `RiffTree::parse` auto-detects
+  the magic and decodes every nested `ckSize` in the matching order,
+  while `RiffTree::encode` re-emits in the same order so a `RIFX` file
+  round-trips byte-for-byte. New `FOURCC_RIFX` constant and
+  `ByteOrder::magic` helper. 4 new tests (RIFX parse, RIFX byte-exact
+  round-trip, LE byte-order detection, magic pairing).
+
 - **Round 376 — recursive `tree` chunk-tree model
   (`RiffTree` / `RiffChunk`).** The `Walker` is non-recursive — the right
   primitive for a streaming demuxer but awkward for the whole-file

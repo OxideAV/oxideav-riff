@@ -91,6 +91,10 @@ owned [`RiffTree`] of [`RiffChunk`] nodes:
 - **Byte-exact encode** — `RiffTree::encode` is the inverse:
   `parse → encode` reproduces any well-formed 32-bit `RIFF` file
   byte-for-byte.
+- **`RIFX` big-endian variant** — the §2 Motorola-order counterpart of
+  `RIFF` (identical structure, `RIFX` magic, big-endian `ckSize` length
+  words) is auto-detected on parse and re-emitted in the same order. The
+  detected [`ByteOrder`] is exposed on `RiffTree::byte_order`.
 - **Navigation** — `find` does a depth-first pre-order descendant
   lookup by FourCC across the whole tree; `find_list` locates an
   immediate-child `LIST` by its list-type (`b"INFO"`, `b"adtl"`,
