@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 376 — RIFF Bundle (`BND`) compound-file form (`bundle`
+  module).** The §3 "Bundle File Format" — `RIFF('BND ' <CTOC> <CGRP>)`,
+  the canonical user of the `ctoc` compound-file structure — carries a
+  series of standalone multimedia files concatenated into `CGRP` and
+  indexed by `CTOC`. `Bundle::from_tree` locates the mandatory `CTOC` +
+  `CGRP` chunks in a parsed `RiffTree` and decodes the index; `element`
+  slices a single bundled file out of the `CGRP` body by its table entry
+  (rejecting deleted/unused/out-of-range entries), `live_elements`
+  iterates the non-deleted elements as `(entry, bytes)` pairs, and
+  `entries` exposes the full table. 4 tests.
+
 - **Round 376 — `RiffTree` mutation API + padding-edge-case tests.**
   The edit-and-rewrite use-case the tree was built for now has the
   in-place editing surface it needs: `RiffTree::find_mut` /

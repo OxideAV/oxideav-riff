@@ -193,6 +193,7 @@
 pub mod acid;
 pub mod adtl;
 pub mod bext;
+pub mod bundle;
 pub mod channels;
 pub mod chna;
 pub mod chunk;
@@ -229,6 +230,7 @@ pub use bext::{
     BroadcastExtension, Loudness, BEXT_PREFIX_LEN, DESCRIPTION_LEN, ORIGINATION_DATE_LEN,
     ORIGINATION_TIME_LEN, ORIGINATOR_LEN, ORIGINATOR_REFERENCE_LEN, RESERVED_LEN, UMID_LEN,
 };
+pub use bundle::{Bundle, FORM_BND};
 pub use channels::{
     ChannelMask, SpeakerPosition, StandardLayout, SPEAKER_ALL, SPEAKER_RESERVED_MASK,
     SPEAKER_STANDARD_MASK,

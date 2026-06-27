@@ -298,6 +298,11 @@ untouched.
   compression / per-entry extra fields / flags / `achName`). `encode_body`
   is the byte-exact inverse; `element_bytes` slices an element out of a
   `CGRP` body by an entry's offset+size, rejecting deleted/unused entries.
+- **`BND` Bundle form** ([`Bundle`]) — the §3 Bundle file
+  (`RIFF('BND ' <CTOC> <CGRP>)`), the canonical compound-file user.
+  `Bundle::from_tree` decodes the `CTOC` index out of a parsed tree;
+  `element` / `live_elements` slice the bundled standalone files out of
+  the `CGRP` block by their table entries.
 - **`inst` instrument** ([`Inst`]) — the fixed 7-byte MIDI playback-hint
   record a sampler uses to map a single WAV sample across a keyboard:
   `UnshiftedNote` (the key the sample plays unshifted), signed `FineTune`
