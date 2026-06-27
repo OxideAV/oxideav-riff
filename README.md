@@ -103,6 +103,9 @@ owned [`RiffTree`] of [`RiffChunk`] nodes:
   `LIST` by its list-type (`b"INFO"`, `b"adtl"`, `b"hdrl"`, …);
   `RiffChunk::children` / `ck_size` / `padded_outer_size` expose the
   structure.
+- **Mutation** — `find_mut` / `children_mut` give in-place editing
+  (mutate a leaf body, reorder / insert / remove children) followed by a
+  byte-exact `encode`.
 
 ### Typed `WAVE` view
 

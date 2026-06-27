@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Round 376 — `RiffTree` mutation API + padding-edge-case tests.**
+  The edit-and-rewrite use-case the tree was built for now has the
+  in-place editing surface it needs: `RiffTree::find_mut` /
+  `RiffChunk::find_mut` (mutable first-descendant lookup by FourCC) and
+  `RiffChunk::children_mut` (mutable child vector for reorder / insert /
+  remove). A leaf body edited through `find_mut` then re-encoded round-
+  trips byte-exactly while every other chunk is untouched. Adds explicit
+  padding/alignment edge-case tests: an odd-then-even sibling pair proves
+  the odd child's pad byte is consumed so the next header stays 2-byte
+  aligned, and a truncated-residual-bytes case confirms a parent payload
+  ending mid-header is rejected (not silently dropped). A clarifying
+  comment documents that child pad bytes are accounted inline so a
+  well-formed body lands exactly on its end.
+
 - **Round 376 — `RiffTree::from_reader` + tree/WaveFile file-level
   round-trip fixture.** `RiffTree::from_reader` builds an owned tree
   straight from a seekable `Read + Seek` source (reads the outer header

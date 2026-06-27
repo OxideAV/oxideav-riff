@@ -290,6 +290,32 @@ impl RiffChunk {
             RiffChunk::Leaf { .. } => &[],
         }
     }
+
+    /// Mutable access to a group's children for in-place editing
+    /// (reorder, insert, remove). `None` for a leaf.
+    pub fn children_mut(&mut self) -> Option<&mut Vec<RiffChunk>> {
+        match self {
+            RiffChunk::Group { children, .. } => Some(children),
+            RiffChunk::Leaf { .. } => None,
+        }
+    }
+
+    /// Mutable variant of [`RiffChunk::find`] — the first descendant
+    /// (depth-first, pre-order) whose FourCC equals `id`. Handy for an
+    /// editor that wants to mutate a `Leaf { body, .. }` in place.
+    pub fn find_mut(&mut self, id: &[u8; 4]) -> Option<&mut RiffChunk> {
+        if let RiffChunk::Group { children, .. } = self {
+            for child in children {
+                if &child.id() == id {
+                    return Some(child);
+                }
+                if let Some(found) = child.find_mut(id) {
+                    return Some(found);
+                }
+            }
+        }
+        None
+    }
 }
 
 /// An owned, recursively-parsed RIFF (or RIFX) file.
@@ -469,6 +495,21 @@ impl RiffTree {
         }
         out
     }
+
+    /// Mutable variant of [`RiffTree::find`] — the first descendant
+    /// whose FourCC equals `id`, for in-place editing followed by a
+    /// byte-exact [`RiffTree::encode`].
+    pub fn find_mut(&mut self, id: &[u8; 4]) -> Option<&mut RiffChunk> {
+        for child in &mut self.children {
+            if &child.id() == id {
+                return Some(child);
+            }
+            if let Some(found) = child.find_mut(id) {
+                return Some(found);
+            }
+        }
+        None
+    }
 }
 
 /// Parse a run of sibling chunks out of `body` (the payload of a group,
@@ -481,8 +522,11 @@ fn parse_children(body: &[u8], depth: usize, order: ByteOrder) -> Result<Vec<Rif
     let mut children = Vec::new();
     let mut pos = 0usize;
     while pos < body.len() {
-        // A bare pad byte at the very end is tolerated only if it's the
-        // single trailing byte left; otherwise we need a full header.
+        // Each iteration consumes a full child (header + body + the
+        // odd-length pad byte, accounted inline via `ck_size & 1`), so a
+        // well-formed body lands `pos` exactly on `body.len()`. Any
+        // 1..=7 residual bytes mean the parent's payload is truncated —
+        // there isn't room for the next 8-byte header.
         if body.len() - pos < 8 {
             return Err(Error::invalid(
                 "RIFF: trailing bytes too short for a chunk header",
@@ -699,6 +743,91 @@ mod tests {
         encode_chunk(&mut bytes, b"RIFF", &inner).unwrap();
         let err = RiffTree::parse(&bytes).unwrap_err();
         assert!(format!("{err}").contains("MAX_DEPTH"));
+    }
+
+    #[test]
+    fn find_mut_edits_a_deep_leaf_in_place() {
+        let bytes = sample_wave();
+        let mut tree = RiffTree::parse(&bytes).unwrap();
+        // Mutate the nested INAM leaf body via find_mut.
+        match tree.find_mut(b"INAM").unwrap() {
+            RiffChunk::Leaf { body, .. } => *body = b"Bye!".to_vec(),
+            _ => panic!(),
+        }
+        let out = tree.encode().unwrap();
+        let re = RiffTree::parse(&out).unwrap();
+        match re.find(b"INAM").unwrap() {
+            RiffChunk::Leaf { body, .. } => assert_eq!(body, b"Bye!"),
+            _ => panic!(),
+        }
+        // Other chunks unaffected.
+        assert_eq!(re.find(b"fmt ").unwrap().id(), *b"fmt ");
+    }
+
+    #[test]
+    fn children_mut_inserts_and_reorders() {
+        let bytes = sample_wave();
+        let mut tree = RiffTree::parse(&bytes).unwrap();
+        // Append a new leaf at the top level.
+        tree.children.push(RiffChunk::Leaf {
+            id: *b"new ",
+            body: vec![0xFF, 0xEE],
+        });
+        // children_mut on the INFO list: append a tag.
+        let list = tree.find_mut(b"LIST").unwrap();
+        list.children_mut().unwrap().push(RiffChunk::Leaf {
+            id: *b"IART",
+            body: vec![b'X', 0],
+        });
+        // Re-encode + re-parse keeps everything consistent.
+        let out = tree.encode().unwrap();
+        let re = RiffTree::parse(&out).unwrap();
+        assert!(re.find(b"new ").is_some());
+        assert_eq!(re.find_list(b"INFO").unwrap().children().len(), 2);
+    }
+
+    #[test]
+    fn odd_then_even_child_pad_accounting() {
+        // RIFF/WAVE { odd(3→pad) even(2) } — the pad byte after the odd
+        // first child must be consumed so the second child's header lands
+        // on the 2-byte boundary.
+        let mut body = Vec::new();
+        body.extend_from_slice(b"WAVE");
+        encode_chunk(&mut body, b"odd ", &[1, 2, 3]).unwrap(); // 3-byte → pad
+        encode_chunk(&mut body, b"evn ", &[4, 5]).unwrap();
+        let mut bytes = Vec::new();
+        encode_chunk(&mut bytes, b"RIFF", &body).unwrap();
+        let tree = RiffTree::parse(&bytes).unwrap();
+        assert_eq!(tree.children.len(), 2);
+        match &tree.children[0] {
+            RiffChunk::Leaf { id, body } => {
+                assert_eq!(id, b"odd ");
+                assert_eq!(body, &[1, 2, 3]); // body is the un-padded 3 bytes
+            }
+            _ => panic!(),
+        }
+        match &tree.children[1] {
+            RiffChunk::Leaf { id, body } => {
+                assert_eq!(id, b"evn ");
+                assert_eq!(body, &[4, 5]);
+            }
+            _ => panic!(),
+        }
+        assert_eq!(tree.encode().unwrap(), bytes);
+    }
+
+    #[test]
+    fn truncated_residual_bytes_rejected() {
+        // A parent whose payload ends 3 bytes into what should be the
+        // next 8-byte header → truncated.
+        let mut body = Vec::new();
+        body.extend_from_slice(b"WAVE");
+        encode_chunk(&mut body, b"data", &[0; 4]).unwrap();
+        body.extend_from_slice(&[1, 2, 3]); // 3 stray bytes, not a header
+        let mut bytes = Vec::new();
+        encode_chunk(&mut bytes, b"RIFF", &body).unwrap();
+        let err = RiffTree::parse(&bytes).unwrap_err();
+        assert!(format!("{err}").contains("too short for a chunk header"));
     }
 
     #[test]
