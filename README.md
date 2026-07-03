@@ -1,5 +1,7 @@
 # oxideav-riff
 
+[![CI](https://github.com/OxideAV/oxideav-riff/actions/workflows/ci.yml/badge.svg)](https://github.com/OxideAV/oxideav-riff/actions/workflows/ci.yml) [![crates.io](https://img.shields.io/crates/v/oxideav-riff.svg)](https://crates.io/crates/oxideav-riff) [![docs.rs](https://docs.rs/oxideav-riff/badge.svg)](https://docs.rs/oxideav-riff) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Pure-Rust, clean-room implementation of the **RIFF** (Resource
 Interchange File Format) chunk-walking primitives plus typed decoders
 for the common WAV/BWF metadata chunks, per the publicly-published
