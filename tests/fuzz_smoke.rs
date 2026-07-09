@@ -170,7 +170,7 @@ fn riff_shaped(rng: &mut XorShift64, payload: &[u8]) -> Vec<u8> {
         2 => b"RF64",
         _ => b"BW64",
     };
-    let form: [u8; 4] = [b'W', b'A', b'V', b'E'];
+    let form: [u8; 4] = *b"WAVE";
     let mut out = Vec::new();
     out.extend_from_slice(magic);
     let declared = match rng.next_u64() & 0x7 {
