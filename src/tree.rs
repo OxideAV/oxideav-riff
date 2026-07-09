@@ -58,7 +58,9 @@
 //! assert_eq!(tree.encode().unwrap(), bytes);
 //! ```
 
-use crate::chunk::{encode_chunk, write_chunk_header, FOURCC_LIST, FOURCC_RIFF, FOURCC_RIFX};
+use crate::chunk::{
+    encode_chunk, read_body_bounded, write_chunk_header, FOURCC_LIST, FOURCC_RIFF, FOURCC_RIFX,
+};
 use crate::error::{Error, Result};
 
 /// Integer byte order of a RIFF file's length fields.
@@ -423,12 +425,13 @@ impl RiffTree {
             ));
         };
         let ck_size = byte_order.read_u32([header[4], header[5], header[6], header[7]]) as usize;
-        let total = 8usize
-            .checked_add(ck_size)
-            .ok_or_else(|| Error::invalid("RIFF: outer ckSize overflows usize"))?;
-        let mut buf = vec![0u8; total];
-        buf[..8].copy_from_slice(&header);
-        r.read_exact(&mut buf[8..])?;
+        // Read the outer payload through the bounded helper rather than
+        // `vec![0u8; 8 + ck_size]` so a hostile outer `ckSize` (up to
+        // 4 GiB) on a short reader is rejected as a typed truncation error
+        // instead of triggering a multi-gigabyte speculative allocation.
+        let mut buf = Vec::with_capacity(8 + ck_size.min(crate::chunk::READ_BODY_INITIAL_CAP));
+        buf.extend_from_slice(&header);
+        buf.extend_from_slice(&read_body_bounded(r, ck_size)?);
         Self::parse(&buf)
     }
 
@@ -851,6 +854,22 @@ mod tests {
         let tree = RiffTree::from_reader(&mut cur).unwrap();
         // Re-encode reproduces only the outer chunk.
         assert_eq!(tree.encode().unwrap(), &bytes[..outer_len]);
+    }
+
+    #[test]
+    fn from_reader_rejects_outer_size_lie_without_huge_alloc() {
+        use std::io::Cursor;
+        // A 12-byte "file" whose outer ckSize claims ~1 GiB. `from_reader`
+        // must reject it as a typed truncation error rather than trying to
+        // allocate the gigabyte the header claims.
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"RIFF");
+        bytes.extend_from_slice(&0x4000_0000u32.to_le_bytes());
+        bytes.extend_from_slice(b"WAVE");
+        let mut cur = Cursor::new(bytes);
+        let err = RiffTree::from_reader(&mut cur).unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("truncated"), "{msg}");
     }
 
     #[test]

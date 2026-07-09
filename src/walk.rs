@@ -52,7 +52,7 @@
 
 use std::io::{Read, Seek, SeekFrom};
 
-use crate::chunk::{read_chunk_header, read_form_type, ChunkHeader};
+use crate::chunk::{read_body_bounded, read_chunk_header, read_form_type, ChunkHeader};
 use crate::ds64::{is_rf64_magic, DataSize64, FOURCC_DS64};
 use crate::error::{Error, Result};
 
@@ -201,8 +201,7 @@ impl<'r, R: Read + Seek + ?Sized> Walker<'r, R> {
                 "RF64: first chunk after the form type is not 'ds64'",
             ));
         }
-        let mut ds64_body = vec![0u8; ds64_header.size as usize];
-        r.read_exact(&mut ds64_body)?;
+        let ds64_body = read_body_bounded(r, ds64_header.size as usize)?;
         if ds64_header.size & 1 == 1 {
             let mut pad = [0u8; 1];
             r.read_exact(&mut pad)?;
@@ -349,8 +348,12 @@ impl<'r, R: Read + Seek + ?Sized> Walker<'r, R> {
     /// `body_offset` — that's deliberate, the consumer pays for
     /// seeks explicitly.
     pub fn read_body(&mut self, chunk: &ChunkRef) -> Result<Vec<u8>> {
-        let mut buf = vec![0u8; chunk.size as usize];
-        self.inner.read_exact(&mut buf)?;
+        // Read via the bounded helper rather than `vec![0u8; size]` so an
+        // over-reported `ckSize` on a short underlying reader costs memory
+        // proportional to the bytes actually present, not to the 32-bit
+        // claim (a hostile 4 GiB size-lie must not trigger a 4 GiB
+        // speculative allocation before the truncation is detected).
+        let buf = read_body_bounded(self.inner, chunk.size as usize)?;
         if chunk.size & 1 == 1 {
             let mut pad = [0u8; 1];
             self.inner.read_exact(&mut pad)?;
@@ -608,6 +611,51 @@ mod tests {
         let mut cur = Cursor::new(bytes);
         let err = Walker::open_root(&mut cur).unwrap_err();
         assert!(format!("{err}").contains("not 'RIFF'"));
+    }
+
+    #[test]
+    fn read_body_of_size_lie_yields_typed_truncation_not_huge_alloc() {
+        // Outer parent claims a 1 GiB payload; the first child header
+        // claims a body just under that budget, but the backing buffer
+        // holds only a handful of real bytes. `read_next` accepts the
+        // child (its declared size fits the — equally fictional — parent
+        // budget), so the truncation must be caught by `read_body`, and
+        // it must be caught *without* first allocating the ~1 GiB the
+        // size-lie claims.
+        let mut v = Vec::new();
+        v.extend_from_slice(b"RIFF");
+        v.extend_from_slice(&0x4000_0000u32.to_le_bytes()); // 1 GiB outer
+        v.extend_from_slice(b"WAVE");
+        v.extend_from_slice(b"data");
+        v.extend_from_slice(&0x3FFF_0000u32.to_le_bytes()); // ~1 GiB body
+        v.extend_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]); // only 4 real bytes
+        let mut cur = Cursor::new(v);
+        let mut walker = Walker::open_root(&mut cur).unwrap();
+        let child = walker.read_next().unwrap().unwrap();
+        assert_eq!(&child.id, b"data");
+        assert_eq!(child.size, 0x3FFF_0000);
+        let err = walker.read_body(&child).unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("truncated"), "{msg}");
+    }
+
+    #[test]
+    fn read_body_returns_exact_bytes_on_valid_input() {
+        // Regression guard for the bounded read: the normal path still
+        // returns exactly the declared body and consumes the pad byte.
+        let bytes = synthetic_wave();
+        let mut cur = Cursor::new(bytes);
+        let mut walker = Walker::open_root(&mut cur).unwrap();
+        let fmt = walker.read_next().unwrap().unwrap();
+        assert_eq!(
+            walker.read_body(&fmt).unwrap(),
+            vec![0x01, 0x00, 0x02, 0x00]
+        );
+        let data = walker.read_next().unwrap().unwrap();
+        // Odd 3-byte body: the pad byte is consumed so the walker lands on
+        // the parent boundary exactly.
+        assert_eq!(walker.read_body(&data).unwrap(), vec![0xAA, 0xBB, 0xCC]);
+        assert!(walker.read_next().unwrap().is_none());
     }
 
     #[test]

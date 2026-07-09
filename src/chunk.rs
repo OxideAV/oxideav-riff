@@ -118,6 +118,40 @@ pub fn read_form_type<R: Read + ?Sized>(r: &mut R) -> Result<[u8; 4]> {
     Ok(b)
 }
 
+/// Initial capacity ceiling for [`read_body_bounded`]. A chunk's `ckSize`
+/// is a 32-bit attacker-controlled field (up to 4 GiB); pre-allocating
+/// `size` bytes before a single byte of body has been read turns a
+/// 12-byte hostile file into a multi-gigabyte allocation. The bounded
+/// reader instead reserves at most this many bytes up front and grows
+/// the buffer only as real bytes arrive, so a size-lie costs memory
+/// proportional to the bytes actually present, not to the claim.
+pub(crate) const READ_BODY_INITIAL_CAP: usize = 64 * 1024;
+
+/// Read exactly `len` body bytes from `r` without trusting `len` enough
+/// to pre-allocate it.
+///
+/// This is the hostile-input-safe counterpart of
+/// `let mut v = vec![0u8; len]; r.read_exact(&mut v)`: it caps the
+/// up-front reservation at [`READ_BODY_INITIAL_CAP`] and lets the buffer
+/// grow as bytes actually arrive, so an over-reported `ckSize` on a short
+/// reader yields a typed truncation error rather than a huge speculative
+/// allocation. A short read (fewer than `len` bytes available) is a
+/// wire-format violation — the enclosing chunk header lied about its
+/// payload length — and surfaces as `Error::invalid`, not an
+/// `UnexpectedEof` I/O error.
+pub(crate) fn read_body_bounded<R: Read + ?Sized>(r: &mut R, len: usize) -> Result<Vec<u8>> {
+    let mut buf = Vec::with_capacity(len.min(READ_BODY_INITIAL_CAP));
+    // `Read::take` on a reborrow bounds the read to `len` bytes; the
+    // adaptor is `Sized`, so this works even for `R: ?Sized`.
+    let n = (&mut *r).take(len as u64).read_to_end(&mut buf)?;
+    if n != len {
+        return Err(Error::invalid(
+            "RIFF: chunk body shorter than its ckSize — truncated input",
+        ));
+    }
+    Ok(buf)
+}
+
 /// Append an 8-byte chunk header to `out`: the 4-byte FourCC followed by
 /// the little-endian `ckSize` (§1.3).
 ///
