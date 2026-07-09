@@ -380,6 +380,34 @@ decode equals the source for a plain RIFF/WAVE file, a BW64/RF64 file, and
 a RIFF/WAVE file whose waveform is the scattered `wavl` LIST of `data` /
 `slnt` chunks.
 
+## Hostile-input hardening
+
+RIFF is a container untrusted files are routinely fed into, so the
+walker, the tree model, and every typed decoder treat *any* byte string
+as input and fail with a typed `Error` rather than panicking or
+over-reading:
+
+- **No attacker-controlled over-allocation.** A 32-bit `ckSize` is
+  untrusted (up to 4 GiB). The reader-backed paths (`Walker::read_body`,
+  the `ds64` read in `Walker::open_rf64`, `RiffTree::from_reader`) read
+  through a bounded helper that caps the up-front reservation and grows
+  the buffer only as real bytes arrive, so a size-lie on a short reader
+  is a typed truncation error, not a multi-gigabyte speculative
+  allocation.
+- **Bounded recursion.** `RiffTree::parse` rejects nesting deeper than
+  `MAX_DEPTH` (a `LIST`-in-`LIST` decompression-bomb guard).
+- **Two always-on test nets.** `tests/fuzz_smoke.rs` is a
+  dependency-free, seeded generative harness that drives random,
+  RIFF-shaped, and bit-flip-mutated inputs through the full public
+  surface, asserting panic-freedom plus parse/encode idempotence on every
+  successful tree parse. `tests/hostile_inputs.rs` pins the specific
+  typed-error behaviour on hand-crafted adversarial structures (the exact
+  `MAX_DEPTH` cutoff, a byte-by-byte truncation sweep, `u32::MAX` sizes,
+  budget overflows, odd-body pad boundaries).
+
+`benches/walk.rs` (a dependency-free `harness = false` timing loop) tracks
+the walk / read / parse / encode hot paths across rounds.
+
 ## Standalone build
 
 `oxideav-core` is gated behind the default-on `registry` feature (which

@@ -7,7 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Round 402 — reader paths hardened against attacker-controlled
+  over-allocation.** A 32-bit `ckSize` is untrusted (up to 4 GiB); the
+  reader-backed paths (`Walker::read_body`, the `ds64` read inside
+  `Walker::open_rf64`, and `RiffTree::from_reader`) previously
+  pre-allocated a `Vec` sized by that field before a single body byte was
+  read, so a 12-byte hostile file claiming a 4 GiB size forced a
+  multi-gigabyte speculative allocation. A new internal `read_body_bounded`
+  helper caps the up-front reservation and grows the buffer only as real
+  bytes arrive, converting an over-reported size on a short reader into a
+  typed truncation `Error` instead. The slice-based `RiffTree::parse` was
+  already bounded by the buffer length and is unchanged.
+
 ### Added
+
+- **Round 402 — hostile-input test hardening: generative fuzz-smoke +
+  enumerated adversarial suite + hot-path bench.** `tests/fuzz_smoke.rs`
+  is a dependency-free, seeded xorshift generative harness driving random,
+  RIFF/RIFX/RF64-shaped, and bit-flip-mutated inputs through the whole
+  public parsing surface (the streaming `Walker`, the owned `RiffTree`,
+  every typed chunk-body decoder, and the `WaveFile` / `Bundle` tree views
+  that fan out into the `collect_from` / `from_tree` decoders); it asserts
+  panic-freedom plus parse/encode idempotence and deterministic re-encode
+  on every successful tree parse (43k iterations, no crashes surfaced).
+  `tests/hostile_inputs.rs` pins the specific typed-error behaviour on
+  hand-crafted structures: the exact `MAX_DEPTH` nesting cutoff
+  (`MAX_DEPTH - 1` parses, `MAX_DEPTH` is rejected), a byte-by-byte
+  truncation sweep of a real multi-chunk WAVE through both parse paths, a
+  `u32::MAX` child `ckSize` rejected as a parent overflow (no wrap), the
+  minimal `ckSize == 4` empty tree, a nested group overflowing the parent
+  budget in the streaming walker, and an odd-body chunk whose parent
+  budget ends before the mandatory pad byte. `benches/walk.rs`
+  (`harness = false`, no external bench crate) times the four hot paths —
+  walk-and-skip, walk-and-read, tree parse, tree encode — over a ~187 KiB
+  synthetic WAVE.
 
 - **Round 376 — RIFF Bundle (`BND`) compound-file form (`bundle`
   module).** The §3 "Bundle File Format" — `RIFF('BND ' <CTOC> <CGRP>)`,
