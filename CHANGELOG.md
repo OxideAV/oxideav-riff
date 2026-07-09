@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.3](https://github.com/OxideAV/oxideav-riff/compare/v0.0.2...v0.0.3) - 2026-07-09
+
+### Added
+
+- *(chna)* BW64 ADM channel-allocation decoder (ITU-R BS.2088 §8)
+- *(fact)* WAV fact chunk decoder (dwSampleLength + RF64 deferral)
+
+### Other
+
+- satisfy clippy 1.97 byte_char_slices in fuzz-smoke harness
+- document round-402 hostile-input hardening in README + CHANGELOG
+- dependency-free micro-benchmark of the RIFF hot paths
+- enumerated hostile-input hardening tests
+- deterministic generative fuzz-smoke harness
+- harden reader paths against attacker-controlled over-allocation
+- add CI / crates.io / docs.rs / MIT-license badges
+- RIFF Bundle (BND) compound-file form (RIFF MCI §3)
+- RiffTree mutation API (find_mut/children_mut) + padding edge-case tests
+- RiffTree::from_reader + tree/WaveFile file-level round-trip fixture
+- typed WaveFile view over RiffTree + RiffTree::find_all
+- CTOC/CGRP compound-file index chunks (RIFF MCI §2)
+- RIFX big-endian byte-order support in the RiffTree model
+- recursive RiffTree chunk-tree model — full nested-LIST traversal + byte-exact encode
+- Walker::open_rf64 / open_bw64 high-level 64-bit walker constructors
+- id3 /ID3  embedded-ID3v2-tag carrier + PAD  padding chunk
+- WAVEFORMATEXTENSIBLE dwChannelMask speaker-position decoding
+- mux fixture exercises JUNK passthrough + extended INFO tags; README/CHANGELOG
+- JUNK filler-chunk decoder/encoder + BS.2088 ds64-reservation classifier
+- extend LIST INFO namespace with the 38 production tags (ExifTool catalogue)
+- wavl file-level mux->walk->decode round-trip fixture
+- wavl wave-data-list + slnt silence decoder (scattered WAV storage)
+- mux fixture round-trip test + README/CHANGELOG (milestone capstone)
+- chunk-encode path — LIST (INFO/adtl) + fmt/axml/bxml/sxml encoders
+- chunk-encode path — variable-width body encoders (cue/plst/smpl/bext/chna)
+- chunk-encode path — shared header writer + fixed-width body encoders
+- BW64 ADM XML-carrier decoders — axml / bxml / sxml (round 340)
+- inst instrument + smpl sampler chunk decoders (round 337)
+- add CSET character-set decoder + country/language/dialect code lookups (r333)
+- typed Acidizer loop-metadata chunk decoder (round 328)
+- RF64/BW64 data-size-64 decoder (EBU Tech 3306 §A.2)
+- refresh to current status, drop per-round changelog cruft
+
 ### Security
 
 - **Round 402 — reader paths hardened against attacker-controlled
