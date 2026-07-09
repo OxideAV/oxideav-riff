@@ -26,6 +26,12 @@ registry = ["dep:oxideav-core"]
 # walker without pulling the framework dependency tree.
 oxideav-core = { version = "0.1", optional = true }
 
+# Dependency-free micro-benchmark (`harness = false` → a plain `main`
+# timing loop on stable, no external bench-harness crate).
+[[bench]]
+name = "walk"
+harness = false
+
 [lints.rust]
 unsafe_code = "deny"
 missing_debug_implementations = "warn"
