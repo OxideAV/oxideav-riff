@@ -236,7 +236,7 @@ impl ChannelAllocation {
         let num_tracks = u16::from_le_bytes([body[0], body[1]]);
         let num_uids = u16::from_le_bytes([body[2], body[3]]);
         let records_region = &body[CHNA_PREFIX_LEN..];
-        if records_region.len() % AUDIO_ID_LEN != 0 {
+        if !records_region.len().is_multiple_of(AUDIO_ID_LEN) {
             return Err(Error::invalid(
                 "RIFF: chna record region is not a whole multiple of 40 bytes",
             ));

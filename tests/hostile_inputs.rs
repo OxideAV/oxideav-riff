@@ -11,7 +11,7 @@
 
 use std::io::Cursor;
 
-use oxideav_riff::{encode_chunk, RiffTree, Walker, MAX_DEPTH};
+use oxideav_riff::{MAX_DEPTH, RiffTree, Walker, encode_chunk};
 
 /// Build a RIFF/WAVE file with `n` `LIST`-within-`LIST` groups nested
 /// inside the outer `RIFF`. The innermost group is empty (form type

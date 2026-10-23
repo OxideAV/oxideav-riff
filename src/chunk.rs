@@ -362,7 +362,9 @@ mod tests {
         encode_chunk(&mut out, b"fmt ", &[0x01, 0x00, 0x02, 0x00]).unwrap();
         assert_eq!(
             out,
-            vec![b'f', b'm', b't', b' ', 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x02, 0x00]
+            vec![
+                b'f', b'm', b't', b' ', 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x02, 0x00
+            ]
         );
         // No pad byte for an even-length body.
         assert_eq!(out.len(), 8 + 4);

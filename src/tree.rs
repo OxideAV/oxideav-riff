@@ -59,7 +59,7 @@
 //! ```
 
 use crate::chunk::{
-    encode_chunk, read_body_bounded, write_chunk_header, FOURCC_LIST, FOURCC_RIFF, FOURCC_RIFX,
+    FOURCC_LIST, FOURCC_RIFF, FOURCC_RIFX, encode_chunk, read_body_bounded, write_chunk_header,
 };
 use crate::error::{Error, Result};
 
@@ -647,10 +647,10 @@ mod tests {
         let mut tree = RiffTree::parse(&bytes).unwrap();
         // Replace the data chunk body with a longer one.
         for child in &mut tree.children {
-            if let RiffChunk::Leaf { id, body } = child {
-                if id == b"data" {
-                    *body = vec![0x11, 0x22, 0x33, 0x44];
-                }
+            if let RiffChunk::Leaf { id, body } = child
+                && id == b"data"
+            {
+                *body = vec![0x11, 0x22, 0x33, 0x44];
             }
         }
         let out = tree.encode().unwrap();

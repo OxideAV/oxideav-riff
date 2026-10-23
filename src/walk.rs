@@ -52,8 +52,8 @@
 
 use std::io::{Read, Seek, SeekFrom};
 
-use crate::chunk::{read_body_bounded, read_chunk_header, read_form_type, ChunkHeader};
-use crate::ds64::{is_rf64_magic, DataSize64, FOURCC_DS64};
+use crate::chunk::{ChunkHeader, read_body_bounded, read_chunk_header, read_form_type};
+use crate::ds64::{DataSize64, FOURCC_DS64, is_rf64_magic};
 use crate::error::{Error, Result};
 
 /// One child chunk yielded by [`Walker::read_next`].
@@ -413,7 +413,7 @@ mod tests {
         v.extend_from_slice(b"fmt ");
         v.extend_from_slice(&4u32.to_le_bytes());
         v.extend_from_slice(&[0x01, 0x00, 0x02, 0x00]); // arbitrary
-                                                        // data chunk (odd-length → pad)
+        // data chunk (odd-length → pad)
         v.extend_from_slice(b"data");
         v.extend_from_slice(&3u32.to_le_bytes());
         v.extend_from_slice(&[0xAA, 0xBB, 0xCC]);

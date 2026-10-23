@@ -219,76 +219,76 @@ pub mod waveformat;
 pub mod wavl;
 
 pub use acid::{
-    Acid, ACID_LEN, FLAG_DISK_BASED, FLAG_HIGH_OCTAVE, FLAG_ONE_SHOT, FLAG_ROOT_NOTE_SET,
+    ACID_LEN, Acid, FLAG_DISK_BASED, FLAG_HIGH_OCTAVE, FLAG_ONE_SHOT, FLAG_ROOT_NOTE_SET,
     FLAG_STRETCH, FOURCC_ACID,
 };
 pub use adtl::{
-    AdtlEntry, AdtlList, EmbeddedFile, LabeledText, FILE_PREFIX_LEN, FOURCC_ADTL, FOURCC_FILE,
-    FOURCC_LABL, FOURCC_LTXT, FOURCC_NOTE, LTXT_PREFIX_LEN,
+    AdtlEntry, AdtlList, EmbeddedFile, FILE_PREFIX_LEN, FOURCC_ADTL, FOURCC_FILE, FOURCC_LABL,
+    FOURCC_LTXT, FOURCC_NOTE, LTXT_PREFIX_LEN, LabeledText,
 };
 pub use bext::{
-    BroadcastExtension, Loudness, BEXT_PREFIX_LEN, DESCRIPTION_LEN, ORIGINATION_DATE_LEN,
+    BEXT_PREFIX_LEN, BroadcastExtension, DESCRIPTION_LEN, Loudness, ORIGINATION_DATE_LEN,
     ORIGINATION_TIME_LEN, ORIGINATOR_LEN, ORIGINATOR_REFERENCE_LEN, RESERVED_LEN, UMID_LEN,
 };
 pub use bundle::{Bundle, FORM_BND};
 pub use channels::{
-    ChannelMask, SpeakerPosition, StandardLayout, SPEAKER_ALL, SPEAKER_RESERVED_MASK,
-    SPEAKER_STANDARD_MASK,
+    ChannelMask, SPEAKER_ALL, SPEAKER_RESERVED_MASK, SPEAKER_STANDARD_MASK, SpeakerPosition,
+    StandardLayout,
 };
 pub use chna::{
-    AudioId, ChannelAllocation, AUDIO_ID_LEN, CHNA_PREFIX_LEN, FOURCC_CHNA, PACK_REF_LEN,
+    AUDIO_ID_LEN, AudioId, CHNA_PREFIX_LEN, ChannelAllocation, FOURCC_CHNA, PACK_REF_LEN,
     TRACK_REF_LEN, UID_LEN,
 };
 pub use chunk::{
-    encode_chunk, read_chunk_header, read_form_type, skip_chunk, skip_pad, write_chunk_header,
-    ChunkHeader, FOURCC_LIST, FOURCC_RIFF, FOURCC_RIFX,
+    ChunkHeader, FOURCC_LIST, FOURCC_RIFF, FOURCC_RIFX, encode_chunk, read_chunk_header,
+    read_form_type, skip_chunk, skip_pad, write_chunk_header,
 };
 pub use cset::{
-    country_name, country_name_defaulted, language_name, language_name_defaulted, CharacterSet,
-    CSET_LEN, DEFAULT_COUNTRY, DEFAULT_DIALECT, DEFAULT_LANGUAGE, FOURCC_CSET,
+    CSET_LEN, CharacterSet, DEFAULT_COUNTRY, DEFAULT_DIALECT, DEFAULT_LANGUAGE, FOURCC_CSET,
+    country_name, country_name_defaulted, language_name, language_name_defaulted,
 };
 pub use ctoc::{
-    element_bytes, is_compound_fourcc, CtocChunk, CtocEntry, CTOC_EFU_CODEPAGE,
-    CTOC_EFU_COMPRESSPARAM0, CTOC_EFU_COMPRESSPARAM9, CTOC_EFU_LANGUAGE, CTOC_EFU_LASTMODTIME,
-    CTOC_EFU_UNUSED, CTOC_EF_DELETED, CTOC_EF_UNUSED, CTOC_HEADER_INFO_LEN, CTOC_HF_MEDSUBTYPE,
-    CTOC_HF_SEQUENTIAL, CTOC_PARAM_DEF_LEN, FOURCC_CGRP, FOURCC_CTOC,
+    CTOC_EF_DELETED, CTOC_EF_UNUSED, CTOC_EFU_CODEPAGE, CTOC_EFU_COMPRESSPARAM0,
+    CTOC_EFU_COMPRESSPARAM9, CTOC_EFU_LANGUAGE, CTOC_EFU_LASTMODTIME, CTOC_EFU_UNUSED,
+    CTOC_HEADER_INFO_LEN, CTOC_HF_MEDSUBTYPE, CTOC_HF_SEQUENTIAL, CTOC_PARAM_DEF_LEN, CtocChunk,
+    CtocEntry, FOURCC_CGRP, FOURCC_CTOC, element_bytes, is_compound_fourcc,
 };
-pub use cue::{CueChunk, CuePoint, CUE_POINT_LEN, FOURCC_CUE};
+pub use cue::{CUE_POINT_LEN, CueChunk, CuePoint, FOURCC_CUE};
 pub use ds64::{
-    is_rf64_magic, is_sentinel, ChunkSize64, DataSize64, CHUNK_SIZE64_LEN, DS64_PREFIX_LEN,
-    FOURCC_BW64, FOURCC_DS64, FOURCC_RF64, SIZE_SENTINEL,
+    CHUNK_SIZE64_LEN, ChunkSize64, DS64_PREFIX_LEN, DataSize64, FOURCC_BW64, FOURCC_DS64,
+    FOURCC_RF64, SIZE_SENTINEL, is_rf64_magic, is_sentinel,
 };
 pub use error::{Error, Result};
-pub use fact::{Fact, FACT_MIN_LEN, FOURCC_FACT};
+pub use fact::{FACT_MIN_LEN, FOURCC_FACT, Fact};
 pub use fourcc::{fourcc_bytes, fourcc_to_string, is_printable_fourcc};
 pub use id3::{
-    build_id3v2_header, is_id3_fourcc, parse_id3v2_header, Id3Chunk, Id3v2Header, FOURCC_ID3,
-    FOURCC_ID3_UPPER, ID3V2_HEADER_LEN, ID3V2_MAGIC, ID3_FLAG_EXPERIMENTAL,
-    ID3_FLAG_EXTENDED_HEADER, ID3_FLAG_FOOTER, ID3_FLAG_UNSYNCHRONISATION,
+    FOURCC_ID3, FOURCC_ID3_UPPER, ID3_FLAG_EXPERIMENTAL, ID3_FLAG_EXTENDED_HEADER, ID3_FLAG_FOOTER,
+    ID3_FLAG_UNSYNCHRONISATION, ID3V2_HEADER_LEN, ID3V2_MAGIC, Id3Chunk, Id3v2Header,
+    build_id3v2_header, is_id3_fourcc, parse_id3v2_header,
 };
-pub use info::{zstr_bytes, zstr_value, InfoList, InfoTag};
-pub use inst::{Inst, FOURCC_INST, INST_LEN};
-pub use padding::{is_padding_fourcc, Junk, DS64_RESERVATION_LEN, FOURCC_JUNK, FOURCC_PAD};
-pub use plst::{PlaySegment, Playlist, FOURCC_PLST, PLAY_SEGMENT_LEN};
+pub use info::{InfoList, InfoTag, zstr_bytes, zstr_value};
+pub use inst::{FOURCC_INST, INST_LEN, Inst};
+pub use padding::{DS64_RESERVATION_LEN, FOURCC_JUNK, FOURCC_PAD, Junk, is_padding_fourcc};
+pub use plst::{FOURCC_PLST, PLAY_SEGMENT_LEN, PlaySegment, Playlist};
 pub use smpl::{
-    SampleLoop, Smpl, FOURCC_SMPL, SAMPLE_LOOP_LEN, SMPL_HEADER_LEN, SMPTE_FORMAT_NONE,
+    FOURCC_SMPL, SAMPLE_LOOP_LEN, SMPL_HEADER_LEN, SMPTE_FORMAT_NONE, SampleLoop, Smpl,
 };
 pub use subtype::{
-    iec61937_guid, iec61937_name, waveformatex_guid, waveformatex_name, KsSubtype, IEC61937_DATA2,
+    IEC61937_DATA2, KsSubtype, iec61937_guid, iec61937_name, waveformatex_guid, waveformatex_name,
 };
 pub use sxml::{
-    AlignmentPoint, AxmlChunk, BxmlChunk, SubXmlChunk, SxmlChunk, ALIGNMENT_POINT_LEN,
-    FMT_TYPE_GZIP, FMT_TYPE_UNCOMPRESSED, FOURCC_AXML, FOURCC_BXML, FOURCC_SXML,
-    SUB_XML_HEADER_LEN,
+    ALIGNMENT_POINT_LEN, AlignmentPoint, AxmlChunk, BxmlChunk, FMT_TYPE_GZIP,
+    FMT_TYPE_UNCOMPRESSED, FOURCC_AXML, FOURCC_BXML, FOURCC_SXML, SUB_XML_HEADER_LEN, SubXmlChunk,
+    SxmlChunk,
 };
-pub use tree::{ByteOrder, RiffChunk, RiffTree, MAX_DEPTH};
+pub use tree::{ByteOrder, MAX_DEPTH, RiffChunk, RiffTree};
 pub use walk::{ChunkRef, Walker};
-pub use wave::{WaveFile, FORM_WAVE};
+pub use wave::{FORM_WAVE, WaveFile};
 pub use waveformat::{
-    ExtensibleFields, Guid, WaveFormat, KSDATAFORMAT_SUBTYPE_WAVEFORMATEX_BASE, WAVE_FORMAT_ADPCM,
+    ExtensibleFields, Guid, KSDATAFORMAT_SUBTYPE_WAVEFORMATEX_BASE, WAVE_FORMAT_ADPCM,
     WAVE_FORMAT_ALAW, WAVE_FORMAT_EXTENSIBLE, WAVE_FORMAT_IEEE_FLOAT, WAVE_FORMAT_MULAW,
-    WAVE_FORMAT_PCM,
+    WAVE_FORMAT_PCM, WaveFormat,
 };
 pub use wavl::{
-    Silence, WaveDataList, WaveSegment, FOURCC_DATA, FOURCC_SLNT, FOURCC_WAVL, SLNT_LEN,
+    FOURCC_DATA, FOURCC_SLNT, FOURCC_WAVL, SLNT_LEN, Silence, WaveDataList, WaveSegment,
 };

@@ -606,13 +606,17 @@ mod tests {
         assert!(ChannelMask::new(0x3F).validate_for_channels(5).is_err());
         // Empty and ALL are rejected by the strict authoring check.
         assert!(ChannelMask::new(0).validate_for_channels(0).is_err());
-        assert!(ChannelMask::new(SPEAKER_ALL)
-            .validate_for_channels(0)
-            .is_err());
+        assert!(
+            ChannelMask::new(SPEAKER_ALL)
+                .validate_for_channels(0)
+                .is_err()
+        );
         // Reserved bit.
-        assert!(ChannelMask::new(0x3F | (1 << 19))
-            .validate_for_channels(6)
-            .is_err());
+        assert!(
+            ChannelMask::new(0x3F | (1 << 19))
+                .validate_for_channels(6)
+                .is_err()
+        );
     }
 
     #[test]

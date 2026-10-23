@@ -1,8 +1,8 @@
 [package]
 name = "oxideav-riff"
 version = "0.0.2"
-edition = "2021"
-rust-version = "1.80"
+edition = "2024"
+rust-version = "1.95"
 license = "MIT"
 authors = ["Mark Karpeles <admin@echelle.co.jp>"]
 description = "Clean-room RIFF (Resource Interchange File Format) chunk-walker and WAV-metadata accessor — Microsoft RIFF MCI base spec + WAVEFORMATEX(TENSIBLE) + KSDATAFORMAT_SUBTYPE GUID resolver"

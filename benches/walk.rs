@@ -22,7 +22,7 @@ use std::hint::black_box;
 use std::io::Cursor;
 use std::time::Instant;
 
-use oxideav_riff::{encode_chunk, RiffTree, Walker};
+use oxideav_riff::{RiffTree, Walker, encode_chunk};
 
 /// Build a RIFF/WAVE file carrying `n_chunks` mixed leaf chunks and a
 /// handful of nested `LIST INFO` groups, so the walk and tree paths see a

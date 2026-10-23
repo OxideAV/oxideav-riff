@@ -18,7 +18,7 @@
 //! tree, then [`Bundle::from_tree`] locates the `CTOC` + `CGRP` chunks
 //! and decodes the index.
 
-use crate::ctoc::{element_bytes, CtocChunk, CtocEntry, FOURCC_CGRP, FOURCC_CTOC};
+use crate::ctoc::{CtocChunk, CtocEntry, FOURCC_CGRP, FOURCC_CTOC, element_bytes};
 use crate::error::{Error, Result};
 use crate::tree::{RiffChunk, RiffTree};
 
@@ -92,7 +92,7 @@ impl Bundle {
 mod tests {
     use super::*;
     use crate::chunk::encode_chunk;
-    use crate::ctoc::{CtocEntry, CTOC_EF_DELETED};
+    use crate::ctoc::{CTOC_EF_DELETED, CtocEntry};
 
     /// Build a BND tree carrying two CGRP elements indexed by a CTOC.
     fn sample_bundle_bytes() -> Vec<u8> {

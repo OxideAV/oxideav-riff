@@ -267,7 +267,7 @@ pub fn build_id3v2_header(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chunk::{read_chunk_header, FOURCC_LIST, FOURCC_RIFF};
+    use crate::chunk::{FOURCC_LIST, FOURCC_RIFF, read_chunk_header};
     use std::io::Cursor;
 
     fn sample_tag() -> Vec<u8> {

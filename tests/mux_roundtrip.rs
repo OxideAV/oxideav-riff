@@ -18,9 +18,9 @@ use std::io::Cursor;
 use std::io::Read;
 
 use oxideav_riff::{
-    encode_chunk, fourcc_to_string, is_rf64_magic, read_chunk_header, read_form_type, Acid,
-    AdtlEntry, AdtlList, ChannelAllocation, CueChunk, CuePoint, DataSize64, Fact, InfoList,
+    Acid, AdtlEntry, AdtlList, ChannelAllocation, CueChunk, CuePoint, DataSize64, Fact, InfoList,
     InfoTag, Inst, Junk, RiffChunk, RiffTree, Smpl, Walker, WaveDataList, WaveFile, WaveFormat,
+    encode_chunk, fourcc_to_string, is_rf64_magic, read_chunk_header, read_form_type,
 };
 
 /// Wrap an already-serialized LIST *body* (the form-type word + children)
@@ -209,7 +209,9 @@ fn full_wave_file_muxes_and_round_trips() {
 
     assert_eq!(
         seen,
-        vec!["fmt ", "fact", "data", "JUNK", "cue ", "LIST", "LIST", "smpl", "inst", "acid"]
+        vec![
+            "fmt ", "fact", "data", "JUNK", "cue ", "LIST", "LIST", "smpl", "inst", "acid"
+        ]
     );
     assert_eq!(got_fmt.unwrap(), fmt);
     assert_eq!(got_fact.unwrap(), fact);

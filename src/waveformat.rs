@@ -474,8 +474,8 @@ mod tests {
         v.extend_from_slice(&22u16.to_le_bytes()); // cbSize = 22
         v.extend_from_slice(&24u16.to_le_bytes()); // wValidBitsPerSample = 24
         v.extend_from_slice(&0x0000_003Fu32.to_le_bytes()); // dwChannelMask = 5.1
-                                                            // SubFormat = KSDATAFORMAT_SUBTYPE_PCM
-                                                            // (00000001-0000-0010-8000-00aa00389b71)
+        // SubFormat = KSDATAFORMAT_SUBTYPE_PCM
+        // (00000001-0000-0010-8000-00aa00389b71)
         v.extend_from_slice(&1u32.to_le_bytes()); // Data1 = 1 (LE)
         v.extend_from_slice(&0u16.to_le_bytes()); // Data2
         v.extend_from_slice(&0x0010u16.to_le_bytes()); // Data3
@@ -511,7 +511,7 @@ mod tests {
         v.extend_from_slice(&22u16.to_le_bytes());
         v.extend_from_slice(&16u16.to_le_bytes()); // wValidBitsPerSample
         v.extend_from_slice(&0x0000_0003u32.to_le_bytes()); // stereo
-                                                            // A fabricated non-template GUID (different Data4 tail).
+        // A fabricated non-template GUID (different Data4 tail).
         v.extend_from_slice(&0x1234_5678u32.to_le_bytes());
         v.extend_from_slice(&0xABCDu16.to_le_bytes());
         v.extend_from_slice(&0xEF01u16.to_le_bytes());

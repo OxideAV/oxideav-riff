@@ -7,7 +7,7 @@
 
 use std::io::Cursor;
 
-use oxideav_riff::{fourcc_to_string, Walker};
+use oxideav_riff::{Walker, fourcc_to_string};
 
 fn synthetic_wav_with_list_info() -> Vec<u8> {
     // Layout (bytes):
