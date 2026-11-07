@@ -51,6 +51,7 @@ pub const FORM_WAVE: [u8; 4] = *b"WAVE";
 /// every other chunk) stay in the [`RiffTree`] the view was decoded
 /// from.
 #[derive(Clone, Debug, Default, PartialEq)]
+#[non_exhaustive]
 pub struct WaveFile {
     /// The `fmt ` format descriptor.
     pub format: Option<WaveFormat>,

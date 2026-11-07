@@ -83,6 +83,7 @@ pub const fn iec61937_guid(stream_type_index: u16) -> Guid {
 /// stream-type index). [`KsSubtype::Other`] preserves the raw GUID for a
 /// value that follows neither template.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum KsSubtype {
     /// A `WAVEFORMATEX`-derived subtype (tail matches the base
     /// template, `Data2 == 0x0000`). The legacy `wFormatTag` is the

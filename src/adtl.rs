@@ -233,6 +233,7 @@ impl EmbeddedFile {
 /// The four spec-defined child kinds plus an `Other` arm for any
 /// unrecognised four-character code, whose body is preserved verbatim.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum AdtlEntry {
     /// A `labl` label: title text for a cue point.
     Label {

@@ -21,6 +21,7 @@ use core::fmt;
 /// Standalone [`Error`] type used when the `registry` feature is off.
 #[cfg(not(feature = "registry"))]
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum Error {
     /// Wire-format violation: a chunk header was truncated, a size
     /// field overflowed the enclosing parent, an outer FourCC was

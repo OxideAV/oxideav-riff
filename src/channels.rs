@@ -210,6 +210,7 @@ impl SpeakerPosition {
 /// A recognised standard channel layout (a named `dwChannelMask` value
 /// from the spec's standard-layout table).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
 pub enum StandardLayout {
     /// `SPEAKER_FRONT_CENTER` (`0x0004`) — a single front-center channel.
     Mono,

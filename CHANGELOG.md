@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `#[non_exhaustive]` on the decoded view `WaveFile` (build it with
+  `WaveFile::from_tree` or `Default`) and on the enums `Error`,
+  `AdtlEntry`, `StandardLayout`, `KsSubtype`. The 1:1 chunk records,
+  `RiffTree`, and the fixed enums `SpeakerPosition`, `ByteOrder`,
+  `RiffChunk`, `WaveSegment` stay exhaustive.
 - edition 2024, MSRV 1.95
 
 ### Security
